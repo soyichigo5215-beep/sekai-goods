@@ -281,4 +281,864 @@
         return { w: 500, h: 500 };
       };
 
-      const drawCropPreview =
+      const drawCropPreview = () => {
+        const canvas = canvasRef.current;
+        const img = rawImageRef.current;
+        if (!canvas || !img) return;
+        const ctx = canvas.getContext('2d');
+        const { w: outW, h: outH } = getAspectDimensions(cropAspect);
+        canvas.width = outW;
+        canvas.height = outH;
+
+        const targetRatio = outW / outH;
+        const imgRatio = img.width / img.height;
+
+        let baseCropW, baseCropH;
+        if (imgRatio > targetRatio) {
+          baseCropH = img.height;
+          baseCropW = img.height * targetRatio;
+        } else {
+          baseCropW = img.width;
+          baseCropH = img.width / targetRatio;
+        }
+
+        const cropW = baseCropW / cropZoom;
+        const cropH = baseCropH / cropZoom;
+
+        const maxOffsetX = img.width - cropW;
+        const maxOffsetY = img.height - cropH;
+
+        const sourceX = Math.max(0, Math.min(img.width - cropW, maxOffsetX * (cropPosX / 100)));
+        const sourceY = Math.max(0, Math.min(img.height - cropH, maxOffsetY * (cropPosY / 100)));
+
+        ctx.clearRect(0, 0, outW, outH);
+        ctx.drawImage(img, sourceX, sourceY, cropW, cropH, 0, 0, outW, outH);
+      };
+
+      const confirmCrop = () => {
+        if (!canvasRef.current) return;
+        const croppedBase64 = canvasRef.current.toDataURL('image/jpeg', 0.85);
+        if (cropTarget === 'goods') {
+          setGoodsForm(p => ({ ...p, image: croppedBase64 }));
+        } else {
+          setWantedForm(p => ({ ...p, image: croppedBase64 }));
+        }
+        setCropModalOpen(false);
+      };
+
+      const toggleArray = (setter, value) => {
+        setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+      };
+
+      // --- ソート用インデックス ---
+      const charOrderMap = useMemo(() => {
+        const map = {};
+        CHARACTERS.forEach((c, idx) => { map[c.id] = idx; });
+        return map;
+      }, []);
+
+      const typeOrderMap = useMemo(() => {
+        const map = {};
+        ITEM_TYPES.forEach((t, idx) => { map[t] = idx; });
+        return map;
+      }, []);
+
+      const getItemCharRank = (item) => {
+        if (!item.characters || item.characters.length === 0) return 999;
+        const ranks = item.characters.map(cid => charOrderMap[cid] ?? 998);
+        return Math.min(...ranks);
+      };
+
+      const getItemTypeRank = (item) => {
+        if (item.isWanted) {
+          if (!item.types || item.types.length === 0) return 999;
+          const ranks = item.types.map(t => typeOrderMap[t] ?? 998);
+          return Math.min(...ranks);
+        }
+        return typeOrderMap[item.type] ?? 999;
+      };
+
+      const getItemTimeRank = (item) => {
+        if (item.createdAt) return item.createdAt;
+        const match = (item.id || '').match(/\d+/);
+        return match ? parseInt(match[0]) : 0;
+      };
+
+      const activeList = activeTab === 'inventory' ? inventoryItems : wantedItems;
+
+      // --- フィルタリング & ソート ---
+      const sortedAndFilteredList = useMemo(() => {
+        const filtered = activeList.filter(item => {
+          const name = item.name || '';
+          const memo = item.memo || '';
+          const chars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name || '').join(' ');
+          const searchMatch = !searchTerm || (name + ' ' + memo + ' ' + chars).toLowerCase().includes(searchTerm.toLowerCase());
+
+          let typeMatch = true;
+          if (filterTypes.length > 0) {
+            if (item.isWanted) {
+              typeMatch = (item.types || []).some(t => filterTypes.includes(t));
+            } else {
+              typeMatch = filterTypes.includes(item.type);
+            }
+          }
+
+          const unitMatch = filterUnits.length === 0 || (item.units || []).some(u => filterUnits.includes(u));
+          const charMatch = filterCharacters.length === 0 || (item.characters || []).some(c => filterCharacters.includes(c));
+          
+          let statusMatch = true;
+          let rateMatch = true;
+          if (!item.isWanted) {
+            if (filterStatuses.length > 0) {
+              const itemStatuses = (item.statuses || []).map(normalizeStatus);
+              statusMatch = itemStatuses.some(s => filterStatuses.includes(s));
+            }
+            if (filterRates.length > 0) {
+              const isUnset = !item.rate || item.rate === '';
+              rateMatch = (filterRates.includes('未設定') && isUnset) || (!isUnset && filterRates.includes(item.rate));
+            }
+          }
+
+          let priorityMatch = true;
+          if (item.isWanted && filterPriorities.length > 0) {
+            const currentPrio = getPriorityConf(item.priority).id;
+            priorityMatch = filterPriorities.includes(currentPrio);
+          }
+
+          return searchMatch && typeMatch && unitMatch && charMatch && statusMatch && rateMatch && priorityMatch;
+        });
+
+        return filtered.sort((a, b) => {
+          if (sortBy === 'character') {
+            const charDiff = getItemCharRank(a) - getItemCharRank(b);
+            if (charDiff !== 0) return charDiff;
+            const typeDiff = getItemTypeRank(a) - getItemTypeRank(b);
+            if (typeDiff !== 0) return typeDiff;
+            return getItemTimeRank(b) - getItemTimeRank(a);
+          } else if (sortBy === 'type') {
+            const typeDiff = getItemTypeRank(a) - getItemTypeRank(b);
+            if (typeDiff !== 0) return typeDiff;
+            const charDiff = getItemCharRank(a) - getItemCharRank(b);
+            if (charDiff !== 0) return charDiff;
+            return getItemTimeRank(b) - getItemTimeRank(a);
+          } else {
+            return getItemTimeRank(b) - getItemTimeRank(a);
+          }
+        });
+      }, [activeList, searchTerm, filterTypes, filterUnits, filterCharacters, filterStatuses, filterRates, filterPriorities, sortBy]);
+
+      const activeFilterCount = filterTypes.length + filterUnits.length + filterCharacters.length + (activeTab === 'inventory' ? (filterStatuses.length + filterRates.length) : filterPriorities.length);
+
+      const availableCharactersFilter = useMemo(() => {
+        if (filterUnits.length === 0) return CHARACTERS;
+        return CHARACTERS.filter(c => filterUnits.includes(c.unit));
+      }, [filterUnits]);
+
+      return (
+        <div className="max-w-4xl mx-auto px-2.5 sm:px-4 py-4">
+          {/* ヘッダー */}
+          <header className="mb-3 pb-2 border-b border-rose-200">
+            <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent">
+              プロセカ グッズ管理
+            </h1>
+            <p className="text-[11px] text-rose-400">グッズ在庫 & 求め絵柄コレクション</p>
+          </header>
+
+          {/* メインタブ切り替え */}
+          <div className="flex bg-rose-100/60 p-1 rounded-2xl mb-3 shadow-inner">
+            <button
+              onClick={() => { setActiveTab('inventory'); setSearchTerm(''); }}
+              className={`flex-1 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                activeTab === 'inventory' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span>📦</span> 在庫・所持
+              <span className="text-[10px] px-1.5 py-0.2 bg-rose-50 text-rose-500 rounded-full">{inventoryItems.length}</span>
+            </button>
+            <button
+              onClick={() => { setActiveTab('wanted'); setSearchTerm(''); }}
+              className={`flex-1 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                activeTab === 'wanted' ? 'bg-white text-pink-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span>💖</span> 求め絵柄
+              <span className="text-[10px] px-1.5 py-0.2 bg-pink-50 text-pink-500 rounded-full">{wantedItems.length}</span>
+            </button>
+          </div>
+
+          {/* 検索 & 絞り込みバー */}
+          <section className="bg-white/95 p-2.5 rounded-2xl shadow-sm border border-rose-100 mb-2.5 flex gap-2">
+            <input
+              type="text"
+              placeholder={activeTab === 'inventory' ? "🔍 グッズ名・キャラ名・メモ" : "🔍 絵柄名・キャラ名・求メモ"}
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="flex-1 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/20 text-xs focus:outline-none focus:ring-2 focus:ring-rose-300"
+            />
+            <button
+              onClick={() => setIsFilterOpen(true)}
+              className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1 relative"
+            >
+              絞り込み
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-pink-500 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </section>
+
+          {/* コントロール行（並び順 ＆ レート比較ボタン） */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold">
+              <span>⇅ 並び順:</span>
+              <div className="flex bg-white/90 p-0.5 rounded-xl border border-rose-100 shadow-sm">
+                {[
+                  { id: 'registered', label: '登録順' },
+                  { id: 'character', label: 'キャラ順' },
+                  { id: 'type', label: 'グッズ順' },
+                ].map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSortBy(s.id)}
+                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                      sortBy === s.id ? 'bg-rose-400 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {activeTab === 'inventory' && (
+                <button
+                  type="button"
+                  onClick={() => setShowRateComparison(prev => !prev)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all flex items-center gap-1 shadow-xs ${
+                    showRateComparison
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-purple-400 ring-2 ring-purple-200'
+                      : 'bg-white/95 text-slate-500 border-rose-200 hover:bg-rose-50'
+                  }`}
+                >
+                  <span>{showRateComparison ? '👁️' : '🔒'}</span>
+                  <span>レート比較 {showRateComparison ? 'ON' : 'OFF'}</span>
+                </button>
+              )}
+              <span className="text-[11px] text-slate-400 font-medium">{sortedAndFilteredList.length} 件</span>
+            </div>
+          </div>
+
+          {/* 絞り込み中タグ */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap items-center gap-1 mb-3 px-1">
+              <span className="text-[10px] text-slate-400">適用中:</span>
+              {filterTypes.map(f => <span key={f} className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">{f}</span>)}
+              {filterUnits.map(u => <span key={u} className="text-[9px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">{UNITS.find(x=>x.id===u)?.name}</span>)}
+              {filterCharacters.map(c => <span key={c} className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">{CHARACTERS.find(x=>x.id===c)?.name}</span>)}
+              {activeTab === 'inventory' && filterStatuses.map(s => <span key={s} className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{s}</span>)}
+              {activeTab === 'inventory' && filterRates.map(r => <span key={r} className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">レート:{r}</span>)}
+              {activeTab === 'wanted' && filterPriorities.map(p => <span key={p} className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">{p}</span>)}
+              <button onClick={() => { setFilterTypes([]); setFilterUnits([]); setFilterCharacters([]); setFilterStatuses([]); setFilterRates([]); setFilterPriorities([]); }} className="text-[10px] text-red-400 underline ml-1.5">クリア</button>
+            </div>
+          )}
+
+          {/* --- 一覧表示エリア --- */}
+          {sortedAndFilteredList.length === 0 ? (
+            <div className="text-center py-16 bg-white/70 border border-dashed border-rose-200 rounded-3xl p-6">
+              <div className="text-3xl mb-2">{activeTab === 'inventory' ? '📦' : '💖'}</div>
+              <p className="text-slate-500 font-medium text-xs">アイテムがありません</p>
+            </div>
+          ) : (
+            <div className="columns-3 sm:columns-4 gap-2 space-y-2">
+              {sortedAndFilteredList.map(item => {
+                const itemChars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)).filter(Boolean);
+
+                if (!item.isWanted) {
+                  /* ================= 📦 在庫グッズ ミニカード ================= */
+                  const rateConf = item.rate ? RATES.find(r => r.id === item.rate) : null;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="break-inside-avoid bg-white rounded-xl border border-rose-100 shadow-sm overflow-hidden flex flex-col group relative"
+                    >
+                      <div 
+                        className="w-full bg-slate-50 relative cursor-pointer"
+                        onClick={() => item.image && setPreviewImage(item.image)}
+                      >
+                        {item.image ? (
+                          <img src={item.image} alt={item.name} className="w-full h-auto object-contain block" />
+                        ) : (
+                          <div className="w-full aspect-square bg-rose-50/50 flex items-center justify-center text-rose-200 text-lg">✨</div>
+                        )}
+                        <div className="absolute top-1 left-1 flex flex-col gap-0.5">
+                          {(item.statuses || []).slice(0, 2).map(rawSt => {
+                            const st = normalizeStatus(rawSt);
+                            const conf = STATUS_OPTIONS.find(s => s.label === st);
+                            return (
+                              <span key={st} className={`text-[8px] font-bold px-1.5 py-0.2 rounded-md border shadow-xs ${conf ? conf.bg : 'bg-slate-100 text-slate-600'}`}>
+                                {st}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {(item.count || 1) > 1 && (
+                          <span className="absolute top-1 right-1 text-[9px] font-black px-1.5 py-0.2 rounded-md bg-black/60 text-white">
+                            ×{item.count}
+                          </span>
+                        )}
+
+                        {showRateComparison && rateConf && (
+                          <div className="absolute bottom-1 right-1 animate-in fade-in duration-150">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-md border ${rateConf.color} ${rateConf.border}`}>
+                              {rateConf.label}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
+                        <div>
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <span className="text-[9px] font-bold text-pink-600 bg-pink-50 px-1 py-0.2 rounded truncate">
+                              {item.type}
+                            </span>
+                          </div>
+                          <h4 className="font-bold text-slate-800 text-[11px] leading-tight line-clamp-2 mb-1">
+                            {item.name || '名称未設定'}
+                          </h4>
+                          {itemChars.length > 0 && (
+                            <div className="flex flex-wrap gap-0.5 mb-1">
+                              {itemChars.map(c => (
+                                <span key={c.id} className="text-[8px] bg-slate-50 text-slate-500 border border-slate-100 px-1 rounded truncate">
+                                  {c.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-end gap-1 pt-1 border-t border-rose-50/80 text-[10px]">
+                          <button onClick={() => openEditGoods(item)} className="text-rose-500 hover:underline font-bold px-1 py-0.5">編集</button>
+                          <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-red-500 font-medium px-1 py-0.5">削除</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                } else {
+                  /* ================= 💖 求め絵柄 ミニカード ================= */
+                  const prioConf = getPriorityConf(item.priority);
+                  return (
+                    <div
+                      key={item.id}
+                      className="break-inside-avoid bg-white rounded-xl border border-pink-200 shadow-sm overflow-hidden flex flex-col group relative"
+                    >
+                      <div 
+                        className="w-full bg-slate-50 relative cursor-pointer"
+                        onClick={() => item.image && setPreviewImage(item.image)}
+                      >
+                        {item.image ? (
+                          <img src={item.image} alt={item.name} className="w-full h-auto object-contain block" />
+                        ) : (
+                          <div className="w-full aspect-square bg-pink-50/50 flex items-center justify-center text-pink-300 text-lg">🖼️</div>
+                        )}
+                        <div className="absolute top-1 left-1">
+                          <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-md shadow-xs ${prioConf.color}`}>
+                            {prioConf.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
+                        <div>
+                          <div className="flex flex-wrap gap-0.5 mb-1">
+                            {(item.types && item.types.length > 0) ? (
+                              item.types.map(t => (
+                                <span key={t} className="text-[8px] font-bold px-1 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-100">
+                                  {t}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[8px] text-slate-400">指定なし</span>
+                            )}
+                          </div>
+                          
+                          <h4 className="font-bold text-slate-800 text-[11px] leading-tight line-clamp-2 mb-1">
+                            {item.name || '絵柄名未設定'}
+                          </h4>
+
+                          {itemChars.length > 0 && (
+                            <div className="flex flex-wrap gap-0.5 mb-1">
+                              {itemChars.map(c => (
+                                <span key={c.id} className="text-[8px] bg-slate-50 text-slate-500 border border-slate-100 px-1 rounded truncate">
+                                  {c.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-end gap-1 pt-1 border-t border-pink-50 text-[10px]">
+                          <button onClick={() => openEditWanted(item)} className="text-pink-600 hover:underline font-bold px-1 py-0.5">編集</button>
+                          <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-red-500 font-medium px-1 py-0.5">削除</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              })}
+            </div>
+          )}
+
+          {/* フローティング追加ボタン */}
+          <button
+            onClick={activeTab === 'inventory' ? openAddGoods : openAddWanted}
+            className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-pink-400 to-rose-400 text-white rounded-full shadow-lg shadow-pink-300/60 flex items-center justify-center text-3xl font-light hover:scale-105 active:scale-95 transition-all z-20"
+          >
+            ＋
+          </button>
+
+          {/* ================= 📦 在庫グッズ 登録モーダル ================= */}
+          {isGoodsModalOpen && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
+              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+                <div className="px-5 py-3.5 border-b border-rose-100 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-800">{goodsForm.name ? 'グッズの編集' : '新しいグッズを登録'}</h2>
+                  <button onClick={() => setIsGoodsModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400">✕</button>
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleSave(goodsForm, () => setIsGoodsModalOpen(false)); }} className="p-4 overflow-y-auto space-y-3.5 text-xs hide-scrollbar">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">写真（トリミング可）</label>
+                    <input type="file" accept="image/*" ref={goodsFileInputRef} onChange={(e) => handleImageSelect(e, 'goods')} className="hidden" />
+                    {goodsForm.image ? (
+                      <div className="relative rounded-2xl overflow-hidden border border-rose-200 h-40 bg-slate-50 flex items-center justify-center">
+                        <img src={goodsForm.image} className="w-full h-full object-contain" />
+                        <div className="absolute top-2 right-2 flex gap-1">
+                          <button type="button" onClick={() => goodsFileInputRef.current?.click()} className="bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">変更</button>
+                          <button type="button" onClick={() => setGoodsForm(p => ({ ...p, image: '' }))} className="bg-red-500/80 text-white text-[10px] px-2 py-1 rounded-full">削除</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => goodsFileInputRef.current?.click()} className="w-full h-24 border-2 border-dashed border-rose-200 rounded-2xl flex flex-col items-center justify-center bg-rose-50/20 text-rose-400">
+                        <span className="text-xl mb-1">📷</span><span className="text-xs font-semibold">写真を選択してトリミング</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">種類</label>
+                    <select value={goodsForm.type} onChange={e => setGoodsForm(p => ({ ...p, type: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white">
+                      {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">グッズ名・絵柄</label>
+                      <input type="text" placeholder="例：特訓前" value={goodsForm.name} onChange={e => setGoodsForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">所持数</label>
+                      <input type="number" min="1" value={goodsForm.count} onChange={e => setGoodsForm(p => ({ ...p, count: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-center" />
+                    </div>
+                  </div>
+
+                  {/* レート項目 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
+                        <span>🔒 レート</span>
+                        <span className="text-[10px] font-normal text-rose-400">（任意・通常は非表示）</span>
+                      </label>
+                      {goodsForm.rate && (
+                        <button
+                          type="button"
+                          onClick={() => setGoodsForm(p => ({ ...p, rate: '' }))}
+                          className="text-[10px] text-slate-400 hover:text-red-500 underline"
+                        >
+                          解除
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {RATES.map(r => {
+                        const isSel = goodsForm.rate === r.id;
+                        return (
+                          <button
+                            type="button"
+                            key={r.id}
+                            onClick={() => setGoodsForm(prev => ({ ...prev, rate: isSel ? '' : r.id }))}
+                            className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                              isSel ? `${r.color} ring-2 ring-rose-300 scale-105 shadow-xs` : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            {r.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ステータス複数選択（交換予定・予約済に対応） */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">ステータス（複数可）</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {STATUS_OPTIONS.map(s => {
+                        const isSel = (goodsForm.statuses || []).includes(s.label);
+                        return <button type="button" key={s.label} onClick={() => {
+                          const curr = goodsForm.statuses || [];
+                          setGoodsForm(p => ({ ...p, statuses: isSel ? curr.filter(x => x !== s.label) : [...curr, s.label] }));
+                        }} className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${isSel ? s.bg + ' ring-2 ring-rose-300' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{s.label}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  {/* キャラクター選択 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">キャラクター（選ぶと所属ユニットも自動登録）</label>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-rose-100 rounded-xl bg-slate-50/50">
+                      {CHARACTERS.map(c => {
+                        const isSel = (goodsForm.characters || []).includes(c.id);
+                        return (
+                          <button
+                            type="button"
+                            key={c.id}
+                            onClick={() => handleToggleCharacter(setGoodsForm, c.id)}
+                            className={`px-2 py-1 rounded-lg text-xs font-medium border ${isSel ? 'bg-pink-400 text-white shadow-xs' : 'bg-white text-slate-600'}`}
+                          >
+                            {isSel ? '✓ ' : ''}{c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ユニット選択 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">ユニット（自動連動・複数可）</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {UNITS.map(u => {
+                        const isSel = (goodsForm.units || []).includes(u.id);
+                        return <button type="button" key={u.id} onClick={() => {
+                          const curr = goodsForm.units || [];
+                          setGoodsForm(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
+                        }} className={`px-2 py-1 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">メモ</label>
+                    <textarea rows="2" placeholder="@twitter_id 様と交換予定" value={goodsForm.memo} onChange={e => setGoodsForm(p => ({ ...p, memo: e.target.value }))} className="w-full px-3 py-1.5 rounded-xl border border-rose-200 text-xs" />
+                  </div>
+                  <div className="pt-1">
+                    <button type="submit" className="w-full py-3 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-2xl font-bold shadow-md">保存する</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ================= 💖 求め絵柄 登録モーダル ================= */}
+          {isWantedModalOpen && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
+              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+                <div className="px-5 py-3.5 border-b border-pink-100 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-800">{wantedForm.name ? '求め絵柄の編集' : '新しい求め絵柄を登録'}</h2>
+                  <button onClick={() => setIsWantedModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400">✕</button>
+                </div>
+                <form onSubmit={(e) => { e.preventDefault(); handleSave(wantedForm, () => setIsWantedModalOpen(false)); }} className="p-4 overflow-y-auto space-y-3.5 text-xs hide-scrollbar">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">イラスト画像（トリミング可）</label>
+                    <input type="file" accept="image/*" ref={wantedFileInputRef} onChange={(e) => handleImageSelect(e, 'wanted')} className="hidden" />
+                    {wantedForm.image ? (
+                      <div className="relative rounded-2xl overflow-hidden border-2 border-pink-200 h-40 bg-slate-50 flex items-center justify-center">
+                        <img src={wantedForm.image} className="w-full h-full object-contain" />
+                        <div className="absolute top-2 right-2 flex gap-1">
+                          <button type="button" onClick={() => wantedFileInputRef.current?.click()} className="bg-black/60 text-white text-[10px] px-2 py-1 rounded-full">変更</button>
+                          <button type="button" onClick={() => setWantedForm(p => ({ ...p, image: '' }))} className="bg-red-500/80 text-white text-[10px] px-2 py-1 rounded-full">削除</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => wantedFileInputRef.current?.click()} className="w-full h-24 border-2 border-dashed border-pink-300 rounded-2xl flex flex-col items-center justify-center bg-pink-50/30 text-pink-500">
+                        <span className="text-xl mb-1">✂️</span><span className="text-xs font-bold">イラストを選択してトリミング</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">優先度</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {PRIORITIES.map(p => {
+                        const isSel = wantedForm.priority === p.id;
+                        return (
+                          <button
+                            type="button"
+                            key={p.id}
+                            onClick={() => setWantedForm(prev => ({ ...prev, priority: p.id }))}
+                            className={`py-2 rounded-xl text-xs font-bold border ${isSel ? p.color + ' ring-2 ring-pink-300' : 'bg-slate-50 text-slate-600'}`}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">求めているグッズの種類（複数可）</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ITEM_TYPES.map(t => {
+                        const isSel = (wantedForm.types || []).includes(t);
+                        return (
+                          <button
+                            type="button"
+                            key={t}
+                            onClick={() => {
+                              const curr = wantedForm.types || [];
+                              setWantedForm(p => ({ ...p, types: isSel ? curr.filter(x => x !== t) : [...curr, t] }));
+                            }}
+                            className={`px-2.5 py-1 rounded-xl text-xs font-semibold border ${isSel ? 'bg-rose-500 text-white border-rose-500 shadow-xs' : 'bg-slate-50 text-slate-600'}`}
+                          >
+                            {isSel ? '✓ ' : ''}{t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">絵柄名・カード名</label>
+                    <input type="text" placeholder="例：特訓後「導きの乙女」" value={wantedForm.name} onChange={e => setWantedForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-pink-200 bg-white" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">キャラクター（選ぶと所属ユニットも自動登録）</label>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-pink-100 rounded-xl bg-slate-50/50">
+                      {CHARACTERS.map(c => {
+                        const isSel = (wantedForm.characters || []).includes(c.id);
+                        return (
+                          <button
+                            type="button"
+                            key={c.id}
+                            onClick={() => handleToggleCharacter(setWantedForm, c.id)}
+                            className={`px-2 py-1 rounded-lg text-xs font-medium border ${isSel ? 'bg-pink-400 text-white shadow-xs' : 'bg-white text-slate-600'}`}
+                          >
+                            {isSel ? '✓ ' : ''}{c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">ユニット（自動連動・複数可）</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {UNITS.map(u => {
+                        const isSel = (wantedForm.units || []).includes(u.id);
+                        return <button type="button" key={u.id} onClick={() => {
+                          const curr = wantedForm.units || [];
+                          setWantedForm(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
+                        }} className={`px-2 py-1 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">求め条件メモ</label>
+                    <textarea rows="2" placeholder="例：同種司と1:1交換希望" value={wantedForm.memo} onChange={e => setWantedForm(p => ({ ...p, memo: e.target.value }))} className="w-full px-3 py-1.5 rounded-xl border border-pink-200 text-xs" />
+                  </div>
+                  <div className="pt-1">
+                    <button type="submit" className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-2xl font-bold shadow-md">保存する</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ================= ✂️ イラストトリミング専用モーダル ================= */}
+          {cropModalOpen && (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+              <div className="bg-white w-full max-w-md rounded-3xl p-4 shadow-2xl flex flex-col space-y-3">
+                <div className="flex items-center justify-between border-b pb-2">
+                  <h3 className="font-bold text-slate-800 text-xs">✂️ 写真・イラストのトリミング</h3>
+                  <button onClick={() => setCropModalOpen(false)} className="text-slate-400 text-base">✕</button>
+                </div>
+
+                <div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'square', label: '正方形 (1:1)', icon: '🔲' },
+                      { id: 'landscape', label: '横長 (4:3)', icon: '▭' },
+                      { id: 'portrait', label: '縦長 (3:4)', icon: '▯' },
+                    ].map(asp => (
+                      <button
+                        key={asp.id}
+                        type="button"
+                        onClick={() => setCropAspect(asp.id)}
+                        className={`py-1.5 rounded-xl text-xs font-bold border flex flex-col items-center justify-center ${
+                          cropAspect === asp.id ? 'bg-pink-100 text-pink-700 border-pink-300 ring-2 ring-pink-200' : 'bg-slate-50 text-slate-600'
+                        }`}
+                      >
+                        <span className="text-sm">{asp.icon}</span>
+                        <span className="text-[10px]">{asp.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-48 bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center border border-slate-200 p-2">
+                  <canvas ref={canvasRef} className="max-w-full max-h-full object-contain rounded-lg shadow-xs" />
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div>
+                    <div className="flex justify-between text-slate-500 font-semibold mb-0.5 text-[11px]">
+                      <span>🔍 ズーム</span><span>{cropZoom.toFixed(1)}x</span>
+                    </div>
+                    <input type="range" min="1.0" max="2.5" step="0.05" value={cropZoom} onChange={e => setCropZoom(parseFloat(e.target.value))} className="w-full accent-pink-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-slate-500 font-semibold mb-0.5 text-[11px]">
+                      <span>↔️ 横位置</span><span>{cropPosX}%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value={cropPosX} onChange={e => setCropPosX(parseInt(e.target.value))} className="w-full accent-pink-500" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-slate-500 font-semibold mb-0.5 text-[11px]">
+                      <span>↕️ 縦位置</span><span>{cropPosY}%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value={cropPosY} onChange={e => setCropPosY(parseInt(e.target.value))} className="w-full accent-pink-500" />
+                  </div>
+                </div>
+
+                <button type="button" onClick={confirmCrop} className="w-full py-2.5 bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-xl font-bold shadow-md text-xs">
+                  決定する
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ================= 絞り込みモーダル ================= */}
+          {isFilterOpen && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
+              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+                <div className="px-5 py-3.5 border-b border-rose-100 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-800">絞り込み条件（{activeTab === 'inventory' ? '在庫' : '求め'}）</h2>
+                  <button onClick={() => setIsFilterOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500">✕</button>
+                </div>
+                <div className="p-4 overflow-y-auto space-y-4 text-xs hide-scrollbar">
+                  {/* 求めタブ限定：優先度 */}
+                  {activeTab === 'wanted' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">優先度</label>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {PRIORITIES.map(p => {
+                          const isSel = filterPriorities.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => toggleArray(setFilterPriorities, p.id)}
+                              className={`py-1.5 rounded-xl text-xs font-bold border ${isSel ? p.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 在庫タブ限定：レート（未設定も選択可能） */}
+                  {activeTab === 'inventory' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">レート（未設定も指定可能）</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {FILTER_RATES.map(r => {
+                          const isSel = filterRates.includes(r.id);
+                          return (
+                            <button
+                              key={r.id}
+                              onClick={() => toggleArray(setFilterRates, r.id)}
+                              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                                isSel ? `${r.color} ring-2 ring-rose-300 scale-105` : 'bg-slate-50 text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {r.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 在庫タブ限定：ステータス */}
+                  {activeTab === 'inventory' && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">ステータス</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {STATUS_OPTIONS.map(s => {
+                          const isSel = filterStatuses.includes(s.label);
+                          return <button key={s.label} onClick={() => toggleArray(setFilterStatuses, s.label)} className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${isSel ? s.bg + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{s.label}</button>
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズの種類</label>
+                    <div className="flex flex-wrap gap-1">
+                      {ITEM_TYPES.map(t => {
+                        const isSel = filterTypes.includes(t);
+                        return <button key={t} onClick={() => toggleArray(setFilterTypes, t)} className={`px-2 py-1 rounded-lg text-[11px] font-medium border ${isSel ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-slate-50 text-slate-500'}`}>{t}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ユニット選択 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">ユニット（タップで下のキャラ候補が連動）</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {UNITS.map(u => {
+                        const isSel = filterUnits.includes(u.id);
+                        return <button key={u.id} onClick={() => toggleArray(setFilterUnits, u.id)} className={`px-2 py-1 rounded-xl text-xs font-bold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{u.name}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  {/* キャラクター選択 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">
+                      キャラクター {filterUnits.length > 0 && <span className="text-[10px] text-pink-500">（選択中ユニットのキャラのみ表示中）</span>}
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-rose-100 rounded-xl bg-slate-50/50">
+                      {availableCharactersFilter.map(c => {
+                        const isSel = filterCharacters.includes(c.id);
+                        return <button key={c.id} onClick={() => toggleArray(setFilterCharacters, c.id)} className={`px-2 py-1 rounded-lg text-[11px] font-medium border ${isSel ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-white text-slate-600'}`}>{c.name}</button>
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-3.5 border-t border-rose-100 bg-slate-50/50 rounded-b-3xl">
+                  <button onClick={() => setIsFilterOpen(false)} className="w-full py-2.5 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-xl font-bold text-xs">結果を表示する</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 画像拡大モーダル */}
+          {previewImage && (
+            <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
+              <img src={previewImage} alt="拡大プレビュー" className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

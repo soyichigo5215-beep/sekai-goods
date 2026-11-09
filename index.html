@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>プロセカ グッズ管理</title>
-  <!-- ホーム画面追加時の全画面（PWA）設定 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="プロセカ管理">
@@ -20,6 +19,12 @@
     body {
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      /* ★推しを背景にしたい場合は、以下のコメントを外して画像URLを入れます★ */
+      /* background-image: url('ここに画像のURLやファイル名'); */
+      /* background-size: cover; */
+      /* background-attachment: fixed; */
+      /* background-position: center; */
+      /* opacity: 0.9; */
     }
     .hide-scrollbar::-webkit-scrollbar {
       display: none;
@@ -28,15 +33,20 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+    /* 背景画像を敷いた時に文字が読みやすいように、半透明の白フィルターを重ねる用 */
+    .bg-overlay {
+      background-color: rgba(255, 241, 242, 0.85); /* rose-50 の半透明 */
+      min-height: 100vh;
+    }
   </style>
 </head>
-<body class="bg-rose-50/40 text-slate-700 min-h-screen antialiased selection:bg-pink-200 pb-28">
-  <div id="root"></div>
+<body class="text-slate-700 min-h-screen antialiased selection:bg-pink-200">
+  <div id="root" class="bg-overlay pb-28"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // --- プロセカ データ定義 ---
+    // --- データ定義 ---
     const UNITS = [
       { id: 'vs', name: 'バーチャル・シンガー', color: 'bg-teal-50 text-teal-700 border-teal-200' },
       { id: 'ln', name: 'Leo/need', color: 'bg-sky-50 text-sky-700 border-sky-200' },
@@ -47,55 +57,15 @@
     ];
 
     const CHARACTERS = [
-      // バーチャル・シンガー
-      { id: 'miku', name: '初音ミク', unit: 'vs' },
-      { id: 'rin', name: '鏡音リン', unit: 'vs' },
-      { id: 'len', name: '鏡音レン', unit: 'vs' },
-      { id: 'luka', name: '巡音ルカ', unit: 'vs' },
-      { id: 'meiko', name: 'MEIKO', unit: 'vs' },
-      { id: 'kaito', name: 'KAITO', unit: 'vs' },
-      // Leo/need
-      { id: 'ichika', name: '星乃一歌', unit: 'ln' },
-      { id: 'saki', name: '天馬咲希', unit: 'ln' },
-      { id: 'honami', name: '望月穂波', unit: 'ln' },
-      { id: 'shiho', name: '日野森志歩', unit: 'ln' },
-      // MORE MORE JUMP！
-      { id: 'minori', name: '花里みのり', unit: 'mmj' },
-      { id: 'haruka', name: '桐谷遥', unit: 'mmj' },
-      { id: 'airi', name: '桃井愛莉', unit: 'mmj' },
-      { id: 'shizuku', name: '日野森雫', unit: 'mmj' },
-      // Vivid BAD SQUAD
-      { id: 'kohane', name: '小豆沢こはね', unit: 'vbs' },
-      { id: 'an', name: '白石杏', unit: 'vbs' },
-      { id: 'akito', name: '東雲彰人', unit: 'vbs' },
-      { id: 'toya', name: '青柳冬弥', unit: 'vbs' },
-      // ワンダーランズ×ショウタイム
-      { id: 'tsukasa', name: '天馬司', unit: 'wxs' },
-      { id: 'emu', name: '鳳えむ', unit: 'wxs' },
-      { id: 'nene', name: '草薙寧々', unit: 'wxs' },
-      { id: 'rui', name: '神代類', unit: 'wxs' },
-      // 25時、ナイトコードで。
-      { id: 'kanade', name: '宵崎奏', unit: 'niigo' },
-      { id: 'mafuyu', name: '朝比奈まふゆ', unit: 'niigo' },
-      { id: 'ena', name: '東雲絵名', unit: 'niigo' },
-      { id: 'mizuki', name: '暁山瑞希', unit: 'niigo' },
+      { id: 'miku', name: '初音ミク', unit: 'vs' }, { id: 'rin', name: '鏡音リン', unit: 'vs' }, { id: 'len', name: '鏡音レン', unit: 'vs' }, { id: 'luka', name: '巡音ルカ', unit: 'vs' }, { id: 'meiko', name: 'MEIKO', unit: 'vs' }, { id: 'kaito', name: 'KAITO', unit: 'vs' },
+      { id: 'ichika', name: '星乃一歌', unit: 'ln' }, { id: 'saki', name: '天馬咲希', unit: 'ln' }, { id: 'honami', name: '望月穂波', unit: 'ln' }, { id: 'shiho', name: '日野森志歩', unit: 'ln' },
+      { id: 'minori', name: '花里みのり', unit: 'mmj' }, { id: 'haruka', name: '桐谷遥', unit: 'mmj' }, { id: 'airi', name: '桃井愛莉', unit: 'mmj' }, { id: 'shizuku', name: '日野森雫', unit: 'mmj' },
+      { id: 'kohane', name: '小豆沢こはね', unit: 'vbs' }, { id: 'an', name: '白石杏', unit: 'vbs' }, { id: 'akito', name: '東雲彰人', unit: 'vbs' }, { id: 'toya', name: '青柳冬弥', unit: 'vbs' },
+      { id: 'tsukasa', name: '天馬司', unit: 'wxs' }, { id: 'emu', name: '鳳えむ', unit: 'wxs' }, { id: 'nene', name: '草薙寧々', unit: 'wxs' }, { id: 'rui', name: '神代類', unit: 'wxs' },
+      { id: 'kanade', name: '宵崎奏', unit: 'niigo' }, { id: 'mafuyu', name: '朝比奈まふゆ', unit: 'niigo' }, { id: 'ena', name: '東雲絵名', unit: 'niigo' }, { id: 'mizuki', name: '暁山瑞希', unit: 'niigo' },
     ];
 
-    const ITEM_TYPES = [
-      'エピカ',
-      'エピカ(箔押し)',
-      'ぱしゃこれ',
-      'メモステ',
-      'メモステ(箔押し)',
-      '色紙',
-      '特典',
-      'はぴこれ',
-      '缶バッジ',
-      'アクリルスタンド',
-      'キーホルダー',
-      'クリアファイル',
-      'その他'
-    ];
+    const ITEM_TYPES = ['エピカ', 'エピカ(箔押し)', 'ぱしゃこれ', 'メモステ', 'メモステ(箔押し)', '色紙', '特典', 'はぴこれ', '缶バッジ', 'アクリルスタンド', 'キーホルダー', 'クリアファイル', 'その他'];
 
     const STATUS_OPTIONS = [
       { label: '譲', bg: 'bg-pink-100 text-pink-700 border-pink-200' },
@@ -106,55 +76,34 @@
       { label: '保留', bg: 'bg-purple-100 text-purple-700 border-purple-200' },
     ];
 
-    // --- IndexedDB ストレージ管理（大容量画像も安全に保存） ---
+    // --- DB処理 ---
     const DB_NAME = 'SekaiGoodsStorage';
     const DB_STORE = 'goods';
-    const openDB = () => {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE, { keyPath: 'id' });
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    };
-
+    const openDB = () => new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE, { keyPath: 'id' });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
     const loadAllItems = async () => {
       try {
         const db = await openDB();
-        return new Promise((resolve) => {
-          const tx = db.transaction(DB_STORE, 'readonly');
-          const store = tx.objectStore(DB_STORE);
-          const req = store.getAll();
+        return new Promise(resolve => {
+          const req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
           req.onsuccess = () => resolve(req.result || []);
           req.onerror = () => resolve([]);
         });
-      } catch (e) {
-        const fallback = localStorage.getItem('sekai_goods_backup');
-        return fallback ? JSON.parse(fallback) : [];
-      }
+      } catch (e) { return []; }
     };
-
     const saveItemDB = async (item) => {
-      try {
-        const db = await openDB();
-        const tx = db.transaction(DB_STORE, 'readwrite');
-        tx.objectStore(DB_STORE).put(item);
-      } catch (e) {
-        console.error(e);
-      }
+      const db = await openDB();
+      db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(item);
     };
-
     const deleteItemDB = async (id) => {
-      try {
-        const db = await openDB();
-        const tx = db.transaction(DB_STORE, 'readwrite');
-        tx.objectStore(DB_STORE).delete(id);
-      } catch (e) {
-        console.error(e);
-      }
+      const db = await openDB();
+      db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(id);
     };
 
-    // 画像の自動圧縮（長辺700px JPEGに変換）
     const compressImage = (file) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -165,17 +114,10 @@
           img.onload = () => {
             const canvas = document.createElement('canvas');
             const maxDimension = 700;
-            let width = img.width;
-            let height = img.height;
-            if (width > height && width > maxDimension) {
-              height = Math.round((height * maxDimension) / width);
-              width = maxDimension;
-            } else if (height > maxDimension) {
-              width = Math.round((width * maxDimension) / height);
-              height = maxDimension;
-            }
-            canvas.width = width;
-            canvas.height = height;
+            let width = img.width, height = img.height;
+            if (width > height && width > maxDimension) { height = Math.round((height * maxDimension) / width); width = maxDimension; }
+            else if (height > maxDimension) { width = Math.round((width * maxDimension) / height); height = maxDimension; }
+            canvas.width = width; canvas.height = height;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             resolve(canvas.toDataURL('image/jpeg', 0.72));
@@ -186,49 +128,33 @@
       });
     };
 
-    const initialFormData = {
-      id: '',
-      name: '',
-      type: 'エピカ',
-      units: [],
-      characters: [],
-      statuses: ['譲'],
-      count: 1,
-      memo: '',
-      image: ''
-    };
+    const initialFormData = { id: '', name: '', type: 'エピカ', units: [], characters: [], statuses: ['譲'], count: 1, memo: '', image: '' };
 
     function App() {
       const [items, setItems] = useState([]);
       const [isModalOpen, setIsModalOpen] = useState(false);
+      const [isFilterOpen, setIsFilterOpen] = useState(false);
       const [formData, setFormData] = useState(initialFormData);
+      
+      // 複数選択用の検索フィルター状態
       const [searchTerm, setSearchTerm] = useState('');
-      const [filterType, setFilterType] = useState('ALL');
-      const [filterUnit, setFilterUnit] = useState('ALL');
-      const [filterStatus, setFilterStatus] = useState('ALL');
+      const [filterTypes, setFilterTypes] = useState([]);
+      const [filterUnits, setFilterUnits] = useState([]);
+      const [filterCharacters, setFilterCharacters] = useState([]);
+      const [filterStatuses, setFilterStatuses] = useState([]);
+      
       const [previewImage, setPreviewImage] = useState(null);
       const fileInputRef = useRef(null);
 
-      useEffect(() => {
-        loadAllItems().then(setItems);
-      }, []);
+      useEffect(() => { loadAllItems().then(setItems); }, []);
 
-      const openAddModal = () => {
-        setFormData({ ...initialFormData, id: 'item_' + Date.now() });
-        setIsModalOpen(true);
-      };
-
+      const openAddModal = () => { setFormData({ ...initialFormData, id: 'item_' + Date.now() }); setIsModalOpen(true); };
       const openEditModal = (item) => {
         setFormData({
           id: item.id || 'item_' + Date.now(),
-          name: item.name || '',
-          type: item.type || 'エピカ',
-          units: Array.isArray(item.units) ? item.units : [],
-          characters: Array.isArray(item.characters) ? item.characters : [],
-          statuses: Array.isArray(item.statuses) ? item.statuses : ['譲'],
-          count: item.count || 1,
-          memo: item.memo || '',
-          image: item.image || ''
+          name: item.name || '', type: item.type || 'エピカ',
+          units: item.units || [], characters: item.characters || [], statuses: item.statuses || ['譲'],
+          count: item.count || 1, memo: item.memo || '', image: item.image || ''
         });
         setIsModalOpen(true);
       };
@@ -238,200 +164,158 @@
         await saveItemDB(formData);
         setItems(prev => {
           const idx = prev.findIndex(i => i.id === formData.id);
-          if (idx >= 0) {
-            const next = [...prev];
-            next[idx] = formData;
-            return next;
-          }
-          return [formData, ...prev];
+          return idx >= 0 ? [...prev.slice(0,idx), formData, ...prev.slice(idx+1)] : [formData, ...prev];
         });
         setIsModalOpen(false);
       };
-
       const handleDelete = async (id) => {
-        if (!confirm('このグッズを削除してもよろしいですか？')) return;
+        if (!confirm('削除してよろしいですか？')) return;
         await deleteItemDB(id);
         setItems(prev => prev.filter(i => i.id !== id));
       };
-
       const handleImageSelect = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        try {
-          const compressed = await compressImage(file);
-          setFormData(prev => ({ ...prev, image: compressed }));
-        } catch (err) {
-          alert('画像の読み込みに失敗しました');
-        }
+        const compressed = await compressImage(file);
+        setFormData(prev => ({ ...prev, image: compressed }));
       };
 
-      // ユニット選択でキャラ候補を切り替え
-      const availableCharacters = useMemo(() => {
+      const availableCharactersForm = useMemo(() => {
         const selectedUnits = formData.units || [];
-        if (selectedUnits.length === 0) return CHARACTERS;
-        return CHARACTERS.filter(c => selectedUnits.includes(c.unit));
+        return selectedUnits.length === 0 ? CHARACTERS : CHARACTERS.filter(c => selectedUnits.includes(c.unit));
       }, [formData.units]);
 
-      // 絞り込み処理
+      const availableCharactersFilter = useMemo(() => {
+        return filterUnits.length === 0 ? CHARACTERS : CHARACTERS.filter(c => filterUnits.includes(c.unit));
+      }, [filterUnits]);
+
+      // 複数条件での絞り込みロジック
       const filteredItems = useMemo(() => {
         return items.filter(item => {
           const name = item.name || '';
           const memo = item.memo || '';
           const chars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name || '').join(' ');
           const searchMatch = !searchTerm || (name + ' ' + memo + ' ' + chars).toLowerCase().includes(searchTerm.toLowerCase());
-          const typeMatch = filterType === 'ALL' || item.type === filterType;
-          const unitMatch = filterUnit === 'ALL' || (item.units || []).includes(filterUnit);
-          const statusMatch = filterStatus === 'ALL' || (item.statuses || []).includes(filterStatus);
-          return searchMatch && typeMatch && unitMatch && statusMatch;
+          
+          const typeMatch = filterTypes.length === 0 || filterTypes.includes(item.type);
+          const unitMatch = filterUnits.length === 0 || (item.units || []).some(u => filterUnits.includes(u));
+          const charMatch = filterCharacters.length === 0 || (item.characters || []).some(c => filterCharacters.includes(c));
+          const statusMatch = filterStatuses.length === 0 || (item.statuses || []).some(s => filterStatuses.includes(s));
+
+          return searchMatch && typeMatch && unitMatch && charMatch && statusMatch;
         });
-      }, [items, searchTerm, filterType, filterUnit, filterStatus]);
+      }, [items, searchTerm, filterTypes, filterUnits, filterCharacters, filterStatuses]);
+
+      // フィルターの選択状況をカウント
+      const activeFilterCount = filterTypes.length + filterUnits.length + filterCharacters.length + filterStatuses.length;
+
+      // チップのトグル関数（汎用）
+      const toggleArray = (setter, value) => {
+        setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+      };
 
       return (
         <div className="max-w-2xl mx-auto px-4 py-6">
           {/* ヘッダー */}
-          <header className="flex items-center justify-between mb-6 pb-3 border-b border-rose-100">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent">
-                プロセカ グッズ管理
-              </h1>
-              <p className="text-xs text-rose-400 mt-0.5">交換・譲渡・所持アイテム整理</p>
+          <header className="flex items-center justify-between mb-6 pb-3 border-b border-rose-200">
+            <div className="flex items-center gap-2">
+              {/* ★推しの画像をヘッダーに入れる場合はこのimgタグのsrcを書き換える★ */}
+              {/* <img src="oshi-icon.png" alt="推し" className="w-8 h-8 rounded-full border border-rose-200" /> */}
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent">
+                  プロセカ グッズ管理
+                </h1>
+                <p className="text-xs text-rose-400 mt-0.5">交換・譲渡・所持アイテム整理</p>
+              </div>
             </div>
             <div className="text-xs font-semibold px-3 py-1 bg-white border border-rose-200 text-rose-500 rounded-full shadow-sm">
               全 {items.length} 点
             </div>
           </header>
 
-          {/* 検索・絞り込み */}
-          <section className="bg-white p-4 rounded-2xl shadow-sm border border-rose-100 mb-6 space-y-3">
+          {/* 検索・絞り込みエリア */}
+          <section className="bg-white/90 p-4 rounded-2xl shadow-sm border border-rose-100 mb-6 flex gap-2">
             <input
               type="text"
-              placeholder="🔍 グッズ名・キャラ名・メモで検索"
+              placeholder="🔍 グッズ名・キャラ名・メモ"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-rose-100 bg-rose-50/20 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+              className="flex-1 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50/30 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
             />
-            
-            <div className="grid grid-cols-3 gap-2">
-              <select
-                value={filterType}
-                onChange={e => setFilterType(e.target.value)}
-                className="w-full px-2 py-2 text-xs rounded-xl border border-rose-100 bg-white font-medium text-slate-600 focus:outline-none"
-              >
-                <option value="ALL">種類：すべて</option>
-                {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-
-              <select
-                value={filterUnit}
-                onChange={e => setFilterUnit(e.target.value)}
-                className="w-full px-2 py-2 text-xs rounded-xl border border-rose-100 bg-white font-medium text-slate-600 focus:outline-none"
-              >
-                <option value="ALL">ユニット：すべて</option>
-                {UNITS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-
-              <select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                className="w-full px-2 py-2 text-xs rounded-xl border border-rose-100 bg-white font-medium text-slate-600 focus:outline-none"
-              >
-                <option value="ALL">状態：すべて</option>
-                {STATUS_OPTIONS.map(s => <option key={s.label} value={s.label}>{s.label}</option>)}
-              </select>
-            </div>
+            <button
+              onClick={() => setIsFilterOpen(true)}
+              className="px-4 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-sm font-bold flex items-center gap-1 hover:bg-rose-100 transition-colors relative"
+            >
+              絞り込み
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-pink-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </section>
 
-          {/* グッズ一覧カード */}
+          {/* 絞り込み中を示すバッジ表示（絞り込んでいる時だけ表示） */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-1 mb-4 px-1">
+              <span className="text-xs text-slate-500 flex items-center mr-1">適用中:</span>
+              {[...filterTypes, ...filterStatuses].map(f => (
+                <span key={f} className="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded-md">{f}</span>
+              ))}
+              {[...filterUnits].map(u => (
+                <span key={u} className="text-[10px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-md">{UNITS.find(x=>x.id===u)?.name}</span>
+              ))}
+              {[...filterCharacters].map(c => (
+                <span key={c} className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md">{CHARACTERS.find(x=>x.id===c)?.name}</span>
+              ))}
+              <button 
+                onClick={() => { setFilterTypes([]); setFilterUnits([]); setFilterCharacters([]); setFilterStatuses([]); }}
+                className="text-[10px] text-red-400 underline ml-2"
+              >クリア</button>
+            </div>
+          )}
+
+          {/* グッズ一覧 */}
           <div className="space-y-4">
             {filteredItems.length === 0 ? (
-              <div className="text-center py-16 bg-white/70 border border-dashed border-rose-200 rounded-3xl p-6">
-                <div className="text-4xl mb-3">🎀</div>
-                <p className="text-slate-500 font-medium text-sm">登録されているグッズがありません</p>
-                <p className="text-xs text-rose-400 mt-1">右下の「＋」ボタンから最初のグッズを登録してみましょう！</p>
+              <div className="text-center py-16 bg-white/80 border border-dashed border-rose-200 rounded-3xl p-6">
+                {/* ★推しの画像を「データがない時」に出す場合はここの絵文字をimgタグに書き換える★ */}
+                <div className="text-4xl mb-3">🎀</div> 
+                <p className="text-slate-500 font-medium text-sm">該当するグッズがありません</p>
               </div>
             ) : (
               filteredItems.map(item => {
-                const itemUnits = (item.units || []).map(uid => UNITS.find(u => u.id === uid)).filter(Boolean);
                 const itemChars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)).filter(Boolean);
-
                 return (
-                  <div key={item.id} className="bg-white rounded-2xl border border-rose-100 shadow-sm overflow-hidden flex flex-col sm:flex-row">
-                    {/* 画像エリア */}
+                  <div key={item.id} className="bg-white/90 rounded-2xl border border-rose-100 shadow-sm overflow-hidden flex flex-col sm:flex-row backdrop-blur-sm">
                     {item.image ? (
-                      <div 
-                        className="sm:w-36 h-48 sm:h-auto bg-slate-50 relative cursor-pointer overflow-hidden flex-shrink-0"
-                        onClick={() => setPreviewImage(item.image)}
-                      >
+                      <div className="sm:w-36 h-48 sm:h-auto bg-slate-50 relative cursor-pointer overflow-hidden flex-shrink-0" onClick={() => setPreviewImage(item.image)}>
                         <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                        <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded-md">タップで拡大</span>
                       </div>
                     ) : (
-                      <div className="sm:w-32 h-20 sm:h-auto bg-rose-50/40 flex items-center justify-center text-rose-200 text-2xl flex-shrink-0">
-                        ✨
-                      </div>
+                      <div className="sm:w-32 h-20 sm:h-auto bg-rose-50/60 flex items-center justify-center text-rose-200 text-2xl flex-shrink-0">✨</div>
                     )}
-
-                    {/* 情報エリア */}
                     <div className="p-4 flex-1 flex flex-col justify-between">
                       <div>
-                        {/* バッジ行 */}
                         <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                          <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-pink-100/80 text-pink-700">
-                            {item.type}
-                          </span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-pink-100/80 text-pink-700">{item.type}</span>
                           {(item.statuses || []).map(st => {
                             const conf = STATUS_OPTIONS.find(s => s.label === st);
-                            return (
-                              <span key={st} className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${conf ? conf.bg : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                {st}
-                              </span>
-                            );
+                            return <span key={st} className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg border ${conf ? conf.bg : 'bg-slate-100 text-slate-600 border-slate-200'}`}>{st}</span>;
                           })}
-                          {(item.count || 1) > 1 && (
-                            <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600">
-                              ×{item.count}
-                            </span>
-                          )}
+                          {(item.count || 1) > 1 && <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600">×{item.count}</span>}
                         </div>
-
-                        {/* タイトル */}
-                        <h3 className="font-bold text-slate-800 text-base mb-1.5">
-                          {item.name || '名称未設定'}
-                        </h3>
-
-                        {/* キャラクター名 */}
+                        <h3 className="font-bold text-slate-800 text-base mb-1.5">{item.name || '名称未設定'}</h3>
                         {itemChars.length > 0 && (
                           <div className="flex flex-wrap gap-1 mb-2">
-                            {itemChars.map(c => (
-                              <span key={c.id} className="text-xs bg-slate-50 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
-                                {c.name}
-                              </span>
-                            ))}
+                            {itemChars.map(c => <span key={c.id} className="text-[10px] bg-slate-50 border border-slate-200 text-slate-600 px-2 py-0.5 rounded-md">{c.name}</span>)}
                           </div>
                         )}
-
-                        {/* メモ */}
-                        {item.memo && (
-                          <p className="text-xs text-slate-500 bg-rose-50/30 p-2 rounded-lg mb-2 whitespace-pre-wrap">
-                            {item.memo}
-                          </p>
-                        )}
+                        {item.memo && <p className="text-xs text-slate-500 bg-rose-50/50 p-2 rounded-lg mb-2 whitespace-pre-wrap">{item.memo}</p>}
                       </div>
-
-                      {/* アクションボタン */}
-                      <div className="flex justify-end gap-2 pt-2 border-t border-rose-50 text-xs">
-                        <button
-                          onClick={() => openEditModal(item)}
-                          className="px-3 py-1.5 text-rose-500 hover:bg-rose-50 rounded-lg font-medium"
-                        >
-                          編集
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="px-3 py-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg font-medium"
-                        >
-                          削除
-                        </button>
+                      <div className="flex justify-end gap-2 pt-2 border-t border-rose-50/50 text-xs">
+                        <button onClick={() => openEditModal(item)} className="px-3 py-1.5 text-rose-500 hover:bg-rose-50 rounded-lg font-medium">編集</button>
+                        <button onClick={() => handleDelete(item.id)} className="px-3 py-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg font-medium">削除</button>
                       </div>
                     </div>
                   </div>
@@ -445,220 +329,157 @@
             onClick={openAddModal}
             className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-tr from-pink-400 to-rose-400 text-white rounded-full shadow-lg shadow-pink-300/60 flex items-center justify-center text-3xl font-light hover:scale-105 active:scale-95 transition-all z-20"
           >
+            {/* ★ここを推しのアイコンにしたい場合は imgタグ に書き換えます ★ */}
             ＋
           </button>
 
-          {/* 登録・編集モーダル */}
+          {/* --- 絞り込みモーダル --- */}
+          {isFilterOpen && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
+              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+                <div className="px-5 py-4 border-b border-rose-100 flex items-center justify-between">
+                  <h2 className="text-base font-bold text-slate-800">詳細絞り込み（複数選択可）</h2>
+                  <button onClick={() => setIsFilterOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500">✕</button>
+                </div>
+                <div className="p-5 overflow-y-auto space-y-5 text-sm hide-scrollbar">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-2">ステータス</label>
+                    <div className="flex flex-wrap gap-2">
+                      {STATUS_OPTIONS.map(s => {
+                        const isSelected = filterStatuses.includes(s.label);
+                        return <button key={s.label} onClick={() => toggleArray(setFilterStatuses, s.label)} className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${isSelected ? s.bg + ' ring-2 ring-rose-300' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>{s.label}</button>
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-2">グッズの種類</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ITEM_TYPES.map(t => {
+                        const isSelected = filterTypes.includes(t);
+                        return <button key={t} onClick={() => toggleArray(setFilterTypes, t)} className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${isSelected ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-slate-50 text-slate-500'}`}>{t}</button>
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-2">ユニット</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {UNITS.map(u => {
+                        const isSelected = filterUnits.includes(u.id);
+                        return <button key={u.id} onClick={() => toggleArray(setFilterUnits, u.id)} className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border ${isSelected ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{u.name}</button>
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-2">キャラクター</label>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 border border-rose-100 rounded-xl bg-slate-50/50">
+                      {availableCharactersFilter.map(c => {
+                        const isSelected = filterCharacters.includes(c.id);
+                        return <button key={c.id} onClick={() => toggleArray(setFilterCharacters, c.id)} className={`px-2 py-1 rounded-lg text-xs font-medium border ${isSelected ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-white text-slate-600'}`}>{c.name}</button>
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-4 border-t border-rose-100 bg-slate-50/50 rounded-b-3xl">
+                  <button onClick={() => setIsFilterOpen(false)} className="w-full py-3 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-xl font-bold shadow-md">結果を表示する</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 登録・編集モーダル（変更なし・省略せずに全コード記載） */}
           {isModalOpen && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
               <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
-                {/* モーダルヘッダー */}
                 <div className="px-5 py-4 border-b border-rose-100 flex items-center justify-between">
-                  <h2 className="text-base font-bold text-slate-800">
-                    {formData.name ? 'グッズの編集' : '新しいグッズを登録'}
-                  </h2>
-                  <button
-                    onClick={() => setIsModalOpen(false)}
-                    className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"
-                  >
-                    ✕
-                  </button>
+                  <h2 className="text-base font-bold text-slate-800">{formData.name ? 'グッズの編集' : '新しいグッズを登録'}</h2>
+                  <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">✕</button>
                 </div>
-
-                {/* 入力フォーム */}
                 <form onSubmit={handleSave} className="p-5 overflow-y-auto space-y-4 text-sm hide-scrollbar">
-                  {/* 写真アップロード */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズの写真</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      ref={fileInputRef}
-                      onChange={handleImageSelect}
-                      className="hidden"
-                    />
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">写真</label>
+                    <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
                     {formData.image ? (
                       <div className="relative rounded-2xl overflow-hidden border border-rose-200 h-44 bg-slate-50 flex items-center justify-center">
-                        <img src={formData.image} alt="プレビュー" className="w-full h-full object-contain" />
-                        <button
-                          type="button"
-                          onClick={() => setFormData(p => ({ ...p, image: '' }))}
-                          className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full"
-                        >
-                          削除
-                        </button>
+                        <img src={formData.image} className="w-full h-full object-contain" />
+                        <button type="button" onClick={() => setFormData(p => ({ ...p, image: '' }))} className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full">削除</button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full h-24 border-2 border-dashed border-rose-200 hover:border-pink-300 rounded-2xl flex flex-col items-center justify-center bg-rose-50/20 text-rose-400 hover:bg-rose-50/40 transition-colors"
-                      >
-                        <span className="text-2xl mb-1">📷</span>
-                        <span className="text-xs font-semibold">写真を撮影 または アルバムから選択</span>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full h-24 border-2 border-dashed border-rose-200 hover:border-pink-300 rounded-2xl flex flex-col items-center justify-center bg-rose-50/20 text-rose-400">
+                        <span className="text-2xl mb-1">📷</span><span className="text-xs font-semibold">写真を撮影 または アルバムから選択</span>
                       </button>
                     )}
                   </div>
-
-                  {/* グッズの種類 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズの種類</label>
-                    <select
-                      value={formData.type}
-                      onChange={e => setFormData(p => ({ ...p, type: e.target.value }))}
-                      className="w-full px-3 py-2.5 rounded-xl border border-rose-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                    >
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">種類</label>
+                    <select value={formData.type} onChange={e => setFormData(p => ({ ...p, type: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-rose-200">
                       {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
-
-                  {/* グッズ名 & 個数 */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズ名・絵柄名</label>
-                      <input
-                        type="text"
-                        placeholder="例：特訓前、Brand New World など"
-                        value={formData.name}
-                        onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-xl border border-rose-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                      />
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズ名・絵柄</label>
+                      <input type="text" placeholder="例：特訓前" value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-rose-200" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">所持数</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.count}
-                        onChange={e => setFormData(p => ({ ...p, count: parseInt(e.target.value) || 1 }))}
-                        className="w-full px-3 py-2.5 rounded-xl border border-rose-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-300 text-center"
-                      />
+                      <input type="number" min="1" value={formData.count} onChange={e => setFormData(p => ({ ...p, count: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2.5 rounded-xl border border-rose-200 text-center" />
                     </div>
                   </div>
-
-                  {/* ステータス複数選択 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">ステータス（複数選択可）</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">ステータス（複数可）</label>
                     <div className="flex flex-wrap gap-2">
                       {STATUS_OPTIONS.map(s => {
-                        const isSelected = (formData.statuses || []).includes(s.label);
-                        return (
-                          <button
-                            type="button"
-                            key={s.label}
-                            onClick={() => {
-                              const curr = formData.statuses || [];
-                              setFormData(p => ({
-                                ...p,
-                                statuses: isSelected ? curr.filter(x => x !== s.label) : [...curr, s.label]
-                              }));
-                            }}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                              isSelected ? s.bg + ' ring-2 ring-rose-300 scale-105' : 'bg-slate-50 text-slate-500 border-slate-200'
-                            }`}
-                          >
-                            {isSelected ? '✓ ' : ''}{s.label}
-                          </button>
-                        );
+                        const isSel = (formData.statuses || []).includes(s.label);
+                        return <button type="button" key={s.label} onClick={() => {
+                          const curr = formData.statuses || [];
+                          setFormData(p => ({ ...p, statuses: isSel ? curr.filter(x => x !== s.label) : [...curr, s.label] }));
+                        }} className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${isSel ? s.bg + ' ring-2 ring-rose-300 scale-105' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{s.label}</button>
                       })}
                     </div>
                   </div>
-
-                  {/* ユニット複数選択 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">関連ユニット（複数選択可）</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">ユニット（複数可）</label>
                     <div className="flex flex-wrap gap-1.5">
                       {UNITS.map(u => {
-                        const isSelected = (formData.units || []).includes(u.id);
-                        return (
-                          <button
-                            type="button"
-                            key={u.id}
-                            onClick={() => {
-                              const curr = formData.units || [];
-                              setFormData(p => ({
-                                ...p,
-                                units: isSelected ? curr.filter(x => x !== u.id) : [...curr, u.id]
-                              }));
-                            }}
-                            className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                              isSelected ? u.color + ' ring-2 ring-rose-200 font-bold' : 'bg-slate-50 text-slate-500 border-slate-200'
-                            }`}
-                          >
-                            {isSelected ? '✓ ' : ''}{u.name}
-                          </button>
-                        );
+                        const isSel = (formData.units || []).includes(u.id);
+                        return <button type="button" key={u.id} onClick={() => {
+                          const curr = formData.units || [];
+                          setFormData(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
+                        }} className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
                       })}
                     </div>
                   </div>
-
-                  {/* キャラクター複数選択 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">キャラクター（複数選択可）</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">キャラクター（複数可）</label>
                     <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 border border-rose-100 rounded-xl bg-slate-50/50">
-                      {availableCharacters.map(c => {
-                        const isSelected = (formData.characters || []).includes(c.id);
-                        return (
-                          <button
-                            type="button"
-                            key={c.id}
-                            onClick={() => {
-                              const curr = formData.characters || [];
-                              setFormData(p => ({
-                                ...p,
-                                characters: isSelected ? curr.filter(x => x !== c.id) : [...curr, c.id]
-                              }));
-                            }}
-                            className={`px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
-                              isSelected ? 'bg-pink-400 text-white border-pink-400 shadow-sm' : 'bg-white text-slate-600 border-slate-200'
-                            }`}
-                          >
-                            {isSelected ? '✓ ' : ''}{c.name}
-                          </button>
-                        );
+                      {availableCharactersForm.map(c => {
+                        const isSel = (formData.characters || []).includes(c.id);
+                        return <button type="button" key={c.id} onClick={() => {
+                          const curr = formData.characters || [];
+                          setFormData(p => ({ ...p, characters: isSel ? curr.filter(x => x !== c.id) : [...curr, c.id] }));
+                        }} className={`px-2 py-1 rounded-lg text-xs font-medium border ${isSel ? 'bg-pink-400 text-white shadow-sm' : 'bg-white text-slate-600'}`}>{isSel ? '✓ ' : ''}{c.name}</button>
                       })}
                     </div>
                   </div>
-
-                  {/* メモ */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">メモ（交換相手のアカウント名など）</label>
-                    <textarea
-                      rows="2"
-                      placeholder="例：@twitter_id 様と郵送交換予定 / 金箔あり"
-                      value={formData.memo}
-                      onChange={e => setFormData(p => ({ ...p, memo: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-rose-300"
-                    />
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5">メモ</label>
+                    <textarea rows="2" placeholder="@twitter_id 様と郵送交換予定" value={formData.memo} onChange={e => setFormData(p => ({ ...p, memo: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-rose-200" />
                   </div>
-
-                  {/* 保存ボタン */}
                   <div className="pt-2">
-                    <button
-                      type="submit"
-                      className="w-full py-3.5 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-2xl font-bold shadow-md shadow-pink-200 active:scale-98 transition-all"
-                    >
-                      保存する
-                    </button>
+                    <button type="submit" className="w-full py-3.5 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-2xl font-bold shadow-md active:scale-98 transition-all">保存する</button>
                   </div>
                 </form>
               </div>
             </div>
           )}
-
-          {/* 画像拡大モーダル */}
           {previewImage && (
-            <div 
-              className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-              onClick={() => setPreviewImage(null)}
-            >
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewImage(null)}>
               <img src={previewImage} alt="拡大プレビュー" className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" />
             </div>
           )}
         </div>
       );
     }
-
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
 </body>

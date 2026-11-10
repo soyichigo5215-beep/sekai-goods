@@ -52,12 +52,21 @@
       { id: 'kanade', name: '宵崎奏', unit: 'niigo' }, { id: 'mafuyu', name: '朝比奈まふゆ', unit: 'niigo' }, { id: 'ena', name: '東雲絵名', unit: 'niigo' }, { id: 'mizuki', name: '暁山瑞希', unit: 'niigo' },
     ];
 
+    // グッズ種類（箔押し統合版）
     const ITEM_TYPES = [
-      'エピカ', 'エピカ(箔押し)', 'ぱしゃこれ', 'メモステ', 'メモステ(箔押し)',
-      '色紙', '特典', 'はぴこれ', '缶バッジ', 'アクリルスタンド', 'キーホルダー', 'クリアファイル', 'その他'
+      'エピカ', 'ぱしゃこれ', 'メモステ', '色紙', '缶バッジ',
+      '特典', 'はぴこれ', 'アクリルスタンド', 'キーホルダー', 'クリアファイル', 'その他'
     ];
 
-    // ステータス定義（交換予定に変更 & 予約済を追加）
+    // サブ属性（仕様）の選択肢
+    const ITEM_SUB_OPTIONS = {
+      'エピカ': ['特訓前', '特訓後', '箔押し', 'その他'],
+      'メモステ': ['小', '大', '箔押し', 'その他'],
+      'ぱしゃこれ': ['ノーマル', '箔押し'],
+      '色紙': ['特訓前', '特訓後', 'その他'],
+      '缶バッジ': ['特訓前', '特訓後', 'その他'],
+    };
+
     const STATUS_OPTIONS = [
       { label: '譲', bg: 'bg-pink-100 text-pink-700 border-pink-200' },
       { label: '求', bg: 'bg-sky-100 text-sky-700 border-sky-200' },
@@ -68,10 +77,8 @@
       { label: '保留', bg: 'bg-purple-100 text-purple-700 border-purple-200' },
     ];
 
-    // 過去データ互換用（交換中 ➔ 交換予定）
     const normalizeStatus = (st) => (st === '交換中' ? '交換予定' : st);
 
-    // 優先度 4択定義（求め絵柄用）
     const PRIORITIES = [
       { id: '最優先', label: '最優先', color: 'bg-rose-500 text-white shadow-sm shadow-rose-200' },
       { id: '優先', label: '優先', color: 'bg-pink-400 text-white shadow-sm shadow-pink-200' },
@@ -79,7 +86,6 @@
       { id: '緩求', label: '緩求', color: 'bg-slate-400 text-white' },
     ];
 
-    // レート 5段階定義（在庫管理用・任意）
     const RATES = [
       { id: '激高', label: '激高', color: 'bg-rose-600 text-white', border: 'border-rose-400' },
       { id: '高', label: '高', color: 'bg-amber-500 text-white', border: 'border-amber-400' },
@@ -88,7 +94,6 @@
       { id: '激低', label: '激低', color: 'bg-slate-400 text-white', border: 'border-slate-300' },
     ];
 
-    // 絞り込み用レート選択肢（未設定を追加）
     const FILTER_RATES = [
       ...RATES,
       { id: '未設定', label: '未設定', color: 'bg-slate-200 text-slate-700', border: 'border-slate-300' },
@@ -102,6 +107,52 @@
         return PRIORITIES[3];
       }
       return PRIORITIES.find(p => p.id === prio) || PRIORITIES[0];
+    };
+
+    // グッズ名とサブ属性の表示フォーマット関数
+    const formatTypeBadge = (type, subTypes) => {
+      if (!subTypes || subTypes.length === 0) return type;
+      return `${type}:${subTypes.join(' ')}`;
+    };
+
+    // 既存データの正規化（過去の「エピカ(箔押し)」等との互換性）
+    const normalizeItemData = (item) => {
+      let type = item.type;
+      let subTypes = Array.isArray(item.subTypes) ? [...item.subTypes] : [];
+      if (type === 'エピカ(箔押し)') {
+        type = 'エピカ';
+        if (!subTypes.includes('箔押し')) subTypes.push('箔押し');
+      }
+      if (type === 'メモステ(箔押し)') {
+        type = 'メモステ';
+        if (!subTypes.includes('箔押し')) subTypes.push('箔押し');
+      }
+
+      let types = Array.isArray(item.types) ? [...item.types] : [];
+      let typeSubMap = item.typeSubMap ? { ...item.typeSubMap } : {};
+      types = types.map(t => {
+        if (t === 'エピカ(箔押し)') {
+          if (!typeSubMap['エピカ']) typeSubMap['エピカ'] = [];
+          if (!typeSubMap['エピカ'].includes('箔押し')) typeSubMap['エピカ'].push('箔押し');
+          return 'エピカ';
+        }
+        if (t === 'メモステ(箔押し)') {
+          if (!typeSubMap['メモステ']) typeSubMap['メモステ'] = [];
+          if (!typeSubMap['メモステ'].includes('箔押し')) typeSubMap['メモステ'].push('箔押し');
+          return 'メモステ';
+        }
+        return t;
+      });
+      types = Array.from(new Set(types));
+
+      return {
+        ...item,
+        type,
+        subTypes,
+        types,
+        typeSubMap,
+        statuses: (item.statuses || []).map(normalizeStatus)
+      };
     };
 
     // --- DB処理 ---
@@ -119,11 +170,15 @@
         const db = await openDB();
         return new Promise(resolve => {
           const req = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
-          req.onsuccess = () => resolve(req.result || []);
+          req.onsuccess = () => {
+            const raw = req.result || [];
+            resolve(raw.map(normalizeItemData));
+          };
           req.onerror = () => resolve([]);
         });
       } catch (e) { return []; }
     };
+
     const saveItemDB = async (item) => {
       const db = await openDB();
       db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(item);
@@ -134,28 +189,31 @@
     };
 
     // --- 初期フォーム状態 ---
-    const initialGoodsForm = { id: '', isWanted: false, name: '', type: 'エピカ', units: [], characters: [], statuses: ['譲'], count: 1, rate: '', memo: '', image: '', createdAt: 0 };
-    const initialWantedForm = { id: '', isWanted: true, name: '', types: ['エピカ'], units: [], characters: [], priority: '最優先', memo: '', image: '', createdAt: 0 };
+    const initialGoodsForm = {
+      id: '', isWanted: false, name: '', type: 'エピカ', subTypes: ['特訓前'],
+      units: [], characters: [], statuses: ['譲'], count: 1, rate: '', memo: '', image: '', createdAt: 0
+    };
+    const initialWantedForm = {
+      id: '', isWanted: true, name: '', types: ['エピカ'], typeSubMap: { 'エピカ': ['特訓前'] },
+      units: [], characters: [], priority: '最優先', count: '1', memo: '', image: '', createdAt: 0
+    };
 
     function App() {
       const [items, setItems] = useState([]);
-      const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'wanted'
+      const [activeTab, setActiveTab] = useState('inventory');
       
       const [isGoodsModalOpen, setIsGoodsModalOpen] = useState(false);
       const [isWantedModalOpen, setIsWantedModalOpen] = useState(false);
       const [isFilterOpen, setIsFilterOpen] = useState(false);
       const [previewImage, setPreviewImage] = useState(null);
 
-      // 並べ替え状態 ('registered' | 'character' | 'type')
       const [sortBy, setSortBy] = useState('registered');
-
-      // レート比較モード
       const [showRateComparison, setShowRateComparison] = useState(false);
 
       const [goodsForm, setGoodsForm] = useState(initialGoodsForm);
       const [wantedForm, setWantedForm] = useState(initialWantedForm);
 
-      // 共通トリミングモーダル状態
+      // トリミングモーダル
       const [cropModalOpen, setCropModalOpen] = useState(false);
       const [cropTarget, setCropTarget] = useState('goods');
       const [rawImageSrc, setRawImageSrc] = useState(null);
@@ -169,6 +227,7 @@
       // 検索・絞り込み状態
       const [searchTerm, setSearchTerm] = useState('');
       const [filterTypes, setFilterTypes] = useState([]);
+      const [filterSubTypes, setFilterSubTypes] = useState({}); // { [type]: ['特訓前', ...] }
       const [filterUnits, setFilterUnits] = useState([]);
       const [filterCharacters, setFilterCharacters] = useState([]);
       const [filterStatuses, setFilterStatuses] = useState([]);
@@ -188,12 +247,13 @@
         setIsGoodsModalOpen(true);
       };
       const openEditGoods = (item) => {
-        const itemStatuses = (Array.isArray(item.statuses) ? item.statuses : ['譲']).map(normalizeStatus);
+        const normalized = normalizeItemData(item);
         setGoodsForm({
-          id: item.id, isWanted: false, name: item.name || '', type: item.type || 'エピカ',
-          units: item.units || [], characters: item.characters || [], statuses: itemStatuses,
-          count: item.count || 1, rate: item.rate || '', memo: item.memo || '', image: item.image || '',
-          createdAt: item.createdAt || 0
+          id: normalized.id, isWanted: false, name: normalized.name || '', type: normalized.type || 'エピカ',
+          subTypes: normalized.subTypes && normalized.subTypes.length > 0 ? normalized.subTypes : (ITEM_SUB_OPTIONS[normalized.type] ? [ITEM_SUB_OPTIONS[normalized.type][0]] : []),
+          units: normalized.units || [], characters: normalized.characters || [], statuses: normalized.statuses || ['譲'],
+          count: normalized.count || 1, rate: normalized.rate || '', memo: normalized.memo || '', image: normalized.image || '',
+          createdAt: normalized.createdAt || 0
         });
         setIsGoodsModalOpen(true);
       };
@@ -203,25 +263,58 @@
         setIsWantedModalOpen(true);
       };
       const openEditWanted = (item) => {
+        const normalized = normalizeItemData(item);
         setWantedForm({
-          id: item.id, isWanted: true, name: item.name || '', types: item.types || ['エピカ'],
-          units: item.units || [], characters: item.characters || [],
-          priority: getPriorityConf(item.priority).id,
-          memo: item.memo || '', image: item.image || '',
-          createdAt: item.createdAt || 0
+          id: normalized.id, isWanted: true, name: normalized.name || '', types: normalized.types || ['エピカ'],
+          typeSubMap: normalized.typeSubMap || {},
+          units: normalized.units || [], characters: normalized.characters || [],
+          priority: getPriorityConf(normalized.priority).id,
+          count: normalized.count !== undefined ? String(normalized.count) : '1',
+          memo: normalized.memo || '', image: normalized.image || '',
+          createdAt: normalized.createdAt || 0
         });
         setIsWantedModalOpen(true);
       };
 
+      // 保存処理（所属ユニットの自動登録を含む）
       const handleSave = async (dataToSave, closeModal) => {
-        const itemWithTime = {
+        // バリデーション：サブ属性の必須チェック
+        if (!dataToSave.isWanted) {
+          if (ITEM_SUB_OPTIONS[dataToSave.type]) {
+            if (!dataToSave.subTypes || dataToSave.subTypes.length === 0) {
+              alert(`「${dataToSave.type}」の仕様（${ITEM_SUB_OPTIONS[dataToSave.type].join(' / ')}）を1つ以上選択してください`);
+              return;
+            }
+          }
+        } else {
+          for (const t of (dataToSave.types || [])) {
+            if (ITEM_SUB_OPTIONS[t]) {
+              const subs = dataToSave.typeSubMap?.[t] || [];
+              if (subs.length === 0) {
+                alert(`「${t}」の仕様（${ITEM_SUB_OPTIONS[t].join(' / ')}）を1つ以上選択してください`);
+                return;
+              }
+            }
+          }
+        }
+
+        // キャラクターの所属ユニットを自動補完
+        const autoUnits = new Set(dataToSave.units || []);
+        (dataToSave.characters || []).forEach(cid => {
+          const c = CHARACTERS.find(x => x.id === cid);
+          if (c && c.unit) autoUnits.add(c.unit);
+        });
+
+        const finalItem = {
           ...dataToSave,
+          units: Array.from(autoUnits),
           createdAt: dataToSave.createdAt || Date.now()
         };
-        await saveItemDB(itemWithTime);
+
+        await saveItemDB(finalItem);
         setItems(prev => {
-          const idx = prev.findIndex(i => i.id === itemWithTime.id);
-          return idx >= 0 ? [...prev.slice(0,idx), itemWithTime, ...prev.slice(idx+1)] : [itemWithTime, ...prev];
+          const idx = prev.findIndex(i => i.id === finalItem.id);
+          return idx >= 0 ? [...prev.slice(0,idx), finalItem, ...prev.slice(idx+1)] : [finalItem, ...prev];
         });
         closeModal();
       };
@@ -232,26 +325,17 @@
         setItems(prev => prev.filter(i => i.id !== id));
       };
 
-      // キャラ選択時に所属ユニットを自動付与
+      // キャラクター選択（ユニットを自動選択せず、純粋にキャラのみトグル）
       const handleToggleCharacter = (formSetter, charId) => {
-        const charObj = CHARACTERS.find(c => c.id === charId);
         formSetter(prev => {
           const currChars = prev.characters || [];
-          const currUnits = prev.units || [];
           const isSelected = currChars.includes(charId);
-          
-          let nextChars = isSelected ? currChars.filter(x => x !== charId) : [...currChars, charId];
-          let nextUnits = [...currUnits];
-
-          if (!isSelected && charObj && charObj.unit && !nextUnits.includes(charObj.unit)) {
-            nextUnits.push(charObj.unit);
-          }
-
-          return { ...prev, characters: nextChars, units: nextUnits };
+          const nextChars = isSelected ? currChars.filter(x => x !== charId) : [...currChars, charId];
+          return { ...prev, characters: nextChars };
         });
       };
 
-      // --- 画像選択 & トリミング起動 ---
+      // 画像トリミング
       const handleImageSelect = (e, target) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -304,7 +388,6 @@
 
         const cropW = baseCropW / cropZoom;
         const cropH = baseCropH / cropZoom;
-
         const maxOffsetX = img.width - cropW;
         const maxOffsetY = img.height - cropH;
 
@@ -330,7 +413,18 @@
         setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
       };
 
-      // --- ソート用インデックス ---
+      // 絞り込み用サブ属性トグル
+      const toggleFilterSubType = (parentType, subVal) => {
+        setFilterSubTypes(prev => {
+          const currentList = prev[parentType] || [];
+          const nextList = currentList.includes(subVal)
+            ? currentList.filter(x => x !== subVal)
+            : [...currentList, subVal];
+          return { ...prev, [parentType]: nextList };
+        });
+      };
+
+      // ソート順序
       const charOrderMap = useMemo(() => {
         const map = {};
         CHARACTERS.forEach((c, idx) => { map[c.id] = idx; });
@@ -366,7 +460,7 @@
 
       const activeList = activeTab === 'inventory' ? inventoryItems : wantedItems;
 
-      // --- フィルタリング & ソート ---
+      // フィルタリング & ソート
       const sortedAndFilteredList = useMemo(() => {
         const filtered = activeList.filter(item => {
           const name = item.name || '';
@@ -374,12 +468,33 @@
           const chars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name || '').join(' ');
           const searchMatch = !searchTerm || (name + ' ' + memo + ' ' + chars).toLowerCase().includes(searchTerm.toLowerCase());
 
+          // グッズ種別 & サブ属性の合致判定
           let typeMatch = true;
           if (filterTypes.length > 0) {
-            if (item.isWanted) {
-              typeMatch = (item.types || []).some(t => filterTypes.includes(t));
+            if (!item.isWanted) {
+              if (!filterTypes.includes(item.type)) {
+                typeMatch = false;
+              } else {
+                // サブ属性フィルターがある場合
+                const targetSubs = filterSubTypes[item.type] || [];
+                if (targetSubs.length > 0) {
+                  typeMatch = (item.subTypes || []).some(s => targetSubs.includes(s));
+                }
+              }
             } else {
-              typeMatch = filterTypes.includes(item.type);
+              // 求め絵柄
+              const matchedTypes = (item.types || []).filter(t => filterTypes.includes(t));
+              if (matchedTypes.length === 0) {
+                typeMatch = false;
+              } else {
+                // サブ属性フィルターがあるか確認
+                typeMatch = matchedTypes.some(t => {
+                  const targetSubs = filterSubTypes[t] || [];
+                  if (targetSubs.length === 0) return true; // 未選択なら全仕様OK
+                  const itemSubs = item.typeSubMap?.[t] || [];
+                  return itemSubs.some(s => targetSubs.includes(s));
+                });
+              }
             }
           }
 
@@ -425,14 +540,26 @@
             return getItemTimeRank(b) - getItemTimeRank(a);
           }
         });
-      }, [activeList, searchTerm, filterTypes, filterUnits, filterCharacters, filterStatuses, filterRates, filterPriorities, sortBy]);
+      }, [activeList, searchTerm, filterTypes, filterSubTypes, filterUnits, filterCharacters, filterStatuses, filterRates, filterPriorities, sortBy]);
 
-      const activeFilterCount = filterTypes.length + filterUnits.length + filterCharacters.length + (activeTab === 'inventory' ? (filterStatuses.length + filterRates.length) : filterPriorities.length);
+      const subTypeFilterCount = Object.values(filterSubTypes).reduce((acc, cur) => acc + cur.length, 0);
+      const activeFilterCount = filterTypes.length + subTypeFilterCount + filterUnits.length + filterCharacters.length + (activeTab === 'inventory' ? (filterStatuses.length + filterRates.length) : filterPriorities.length);
 
+      // モーダル内で選択中ユニットに連動したキャラクター候補
       const availableCharactersFilter = useMemo(() => {
         if (filterUnits.length === 0) return CHARACTERS;
         return CHARACTERS.filter(c => filterUnits.includes(c.unit));
       }, [filterUnits]);
+
+      const availableCharactersGoodsForm = useMemo(() => {
+        if (!goodsForm.units || goodsForm.units.length === 0) return CHARACTERS;
+        return CHARACTERS.filter(c => goodsForm.units.includes(c.unit));
+      }, [goodsForm.units]);
+
+      const availableCharactersWantedForm = useMemo(() => {
+        if (!wantedForm.units || wantedForm.units.length === 0) return CHARACTERS;
+        return CHARACTERS.filter(c => wantedForm.units.includes(c.unit));
+      }, [wantedForm.units]);
 
       return (
         <div className="max-w-4xl mx-auto px-2.5 sm:px-4 py-4">
@@ -488,7 +615,7 @@
             </button>
           </section>
 
-          {/* コントロール行（並び順 ＆ レート比較ボタン） */}
+          {/* コントロール行 */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
             <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold">
               <span>⇅ 並び順:</span>
@@ -534,13 +661,30 @@
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap items-center gap-1 mb-3 px-1">
               <span className="text-[10px] text-slate-400">適用中:</span>
-              {filterTypes.map(f => <span key={f} className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">{f}</span>)}
+              {filterTypes.map(f => (
+                <span key={f} className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">
+                  {f}{filterSubTypes[f]?.length ? `(${filterSubTypes[f].join('/')})` : ''}
+                </span>
+              ))}
               {filterUnits.map(u => <span key={u} className="text-[9px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">{UNITS.find(x=>x.id===u)?.name}</span>)}
               {filterCharacters.map(c => <span key={c} className="text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">{CHARACTERS.find(x=>x.id===c)?.name}</span>)}
               {activeTab === 'inventory' && filterStatuses.map(s => <span key={s} className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{s}</span>)}
               {activeTab === 'inventory' && filterRates.map(r => <span key={r} className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">レート:{r}</span>)}
               {activeTab === 'wanted' && filterPriorities.map(p => <span key={p} className="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">{p}</span>)}
-              <button onClick={() => { setFilterTypes([]); setFilterUnits([]); setFilterCharacters([]); setFilterStatuses([]); setFilterRates([]); setFilterPriorities([]); }} className="text-[10px] text-red-400 underline ml-1.5">クリア</button>
+              <button
+                onClick={() => {
+                  setFilterTypes([]);
+                  setFilterSubTypes({});
+                  setFilterUnits([]);
+                  setFilterCharacters([]);
+                  setFilterStatuses([]);
+                  setFilterRates([]);
+                  setFilterPriorities([]);
+                }}
+                className="text-[10px] text-red-400 underline ml-1.5"
+              >
+                クリア
+              </button>
             </div>
           )}
 
@@ -558,6 +702,7 @@
                 if (!item.isWanted) {
                   /* ================= 📦 在庫グッズ ミニカード ================= */
                   const rateConf = item.rate ? RATES.find(r => r.id === item.rate) : null;
+                  const typeLabel = formatTypeBadge(item.type, item.subTypes);
 
                   return (
                     <div
@@ -601,9 +746,9 @@
 
                       <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
                         <div>
-                          <div className="flex items-center gap-1 mb-0.5">
-                            <span className="text-[9px] font-bold text-pink-600 bg-pink-50 px-1 py-0.2 rounded truncate">
-                              {item.type}
+                          <div className="mb-0.5">
+                            <span className="text-[9px] font-bold text-pink-600 bg-pink-50 px-1 py-0.2 rounded inline-block max-w-full truncate" title={typeLabel}>
+                              {typeLabel}
                             </span>
                           </div>
                           <h4 className="font-bold text-slate-800 text-[11px] leading-tight line-clamp-2 mb-1">
@@ -649,17 +794,28 @@
                             {prioConf.label}
                           </span>
                         </div>
+                        {/* 求め希望数（少数・∞など）の表示 */}
+                        {item.count && (
+                          <span className="absolute top-1 right-1 text-[9px] font-black px-1.5 py-0.2 rounded-md bg-black/60 text-white">
+                            ×{item.count}
+                          </span>
+                        )}
                       </div>
 
                       <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
                         <div>
+                          {/* 求めているグッズ種別（仕様付きで表示） */}
                           <div className="flex flex-wrap gap-0.5 mb-1">
                             {(item.types && item.types.length > 0) ? (
-                              item.types.map(t => (
-                                <span key={t} className="text-[8px] font-bold px-1 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-100">
-                                  {t}
-                                </span>
-                              ))
+                              item.types.map(t => {
+                                const subs = item.typeSubMap?.[t] || [];
+                                const badge = formatTypeBadge(t, subs);
+                                return (
+                                  <span key={t} className="text-[8px] font-bold px-1 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-100 max-w-full truncate" title={badge}>
+                                    {badge}
+                                  </span>
+                                );
+                              })
                             ) : (
                               <span className="text-[8px] text-slate-400">指定なし</span>
                             )}
@@ -727,12 +883,53 @@
                     )}
                   </div>
 
+                  {/* グッズの種類 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">種類</label>
-                    <select value={goodsForm.type} onChange={e => setGoodsForm(p => ({ ...p, type: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white">
+                    <select
+                      value={goodsForm.type}
+                      onChange={e => {
+                        const nextType = e.target.value;
+                        const defaultSubs = ITEM_SUB_OPTIONS[nextType] ? [ITEM_SUB_OPTIONS[nextType][0]] : [];
+                        setGoodsForm(p => ({ ...p, type: nextType, subTypes: defaultSubs }));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white"
+                    >
                       {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
+
+                  {/* サブ属性の選択（該当する場合・複数可・必須） */}
+                  {ITEM_SUB_OPTIONS[goodsForm.type] && (
+                    <div className="bg-rose-50/50 p-2.5 rounded-xl border border-rose-100">
+                      <label className="block text-xs font-bold text-rose-600 mb-1.5">
+                        {goodsForm.type}の仕様 <span className="text-[10px] font-normal text-rose-400">（1つ以上選択必須・複数可）</span>
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ITEM_SUB_OPTIONS[goodsForm.type].map(sub => {
+                          const isSel = (goodsForm.subTypes || []).includes(sub);
+                          return (
+                            <button
+                              type="button"
+                              key={sub}
+                              onClick={() => {
+                                const curr = goodsForm.subTypes || [];
+                                setGoodsForm(p => ({
+                                  ...p,
+                                  subTypes: isSel ? curr.filter(x => x !== sub) : [...curr, sub]
+                                }));
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                                isSel ? 'bg-rose-500 text-white border-rose-500 shadow-xs' : 'bg-white text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {isSel ? '✓ ' : ''}{sub}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-2">
@@ -781,7 +978,7 @@
                     </div>
                   </div>
 
-                  {/* ステータス複数選択（交換予定・予約済に対応） */}
+                  {/* ステータス複数選択 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">ステータス（複数可）</label>
                     <div className="flex flex-wrap gap-1.5">
@@ -795,11 +992,29 @@
                     </div>
                   </div>
 
-                  {/* キャラクター選択 */}
+                  {/* ユニット選択（キャラを絞る用） */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">キャラクター（選ぶと所属ユニットも自動登録）</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">
+                      ユニット <span className="text-[10px] font-normal text-slate-400">（選ぶと下のキャラが絞り込まれます）</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {UNITS.map(u => {
+                        const isSel = (goodsForm.units || []).includes(u.id);
+                        return <button type="button" key={u.id} onClick={() => {
+                          const curr = goodsForm.units || [];
+                          setGoodsForm(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
+                        }} className={`px-2.5 py-1 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  {/* キャラクター選択（ユニットを自動選択せず、保存時に所属ユニットを自動補完） */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">
+                      キャラクター（複数可）
+                    </label>
                     <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-rose-100 rounded-xl bg-slate-50/50">
-                      {CHARACTERS.map(c => {
+                      {availableCharactersGoodsForm.map(c => {
                         const isSel = (goodsForm.characters || []).includes(c.id);
                         return (
                           <button
@@ -811,20 +1026,6 @@
                             {isSel ? '✓ ' : ''}{c.name}
                           </button>
                         );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* ユニット選択 */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">ユニット（自動連動・複数可）</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {UNITS.map(u => {
-                        const isSel = (goodsForm.units || []).includes(u.id);
-                        return <button type="button" key={u.id} onClick={() => {
-                          const curr = goodsForm.units || [];
-                          setGoodsForm(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
-                        }} className={`px-2 py-1 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
                       })}
                     </div>
                   </div>
@@ -887,9 +1088,10 @@
                     </div>
                   </div>
 
+                  {/* 求めているグッズの種類 & サブ属性 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">求めているグッズの種類（複数可）</label>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 mb-2">
                       {ITEM_TYPES.map(t => {
                         const isSel = (wantedForm.types || []).includes(t);
                         return (
@@ -898,7 +1100,13 @@
                             key={t}
                             onClick={() => {
                               const curr = wantedForm.types || [];
-                              setWantedForm(p => ({ ...p, types: isSel ? curr.filter(x => x !== t) : [...curr, t] }));
+                              const nextTypes = isSel ? curr.filter(x => x !== t) : [...curr, t];
+                              // 新規追加時、サブ属性があればデフォルトで1つ目を選択
+                              const nextSubMap = { ...(wantedForm.typeSubMap || {}) };
+                              if (!isSel && ITEM_SUB_OPTIONS[t] && (!nextSubMap[t] || nextSubMap[t].length === 0)) {
+                                nextSubMap[t] = [ITEM_SUB_OPTIONS[t][0]];
+                              }
+                              setWantedForm(p => ({ ...p, types: nextTypes, typeSubMap: nextSubMap }));
                             }}
                             className={`px-2.5 py-1 rounded-xl text-xs font-semibold border ${isSel ? 'bg-rose-500 text-white border-rose-500 shadow-xs' : 'bg-slate-50 text-slate-600'}`}
                           >
@@ -907,17 +1115,97 @@
                         );
                       })}
                     </div>
+
+                    {/* 選択されたグッズの仕様設定（サブ属性があるもののみ展開） */}
+                    {(wantedForm.types || []).filter(t => ITEM_SUB_OPTIONS[t]).map(t => (
+                      <div key={t} className="bg-pink-50/50 p-2 rounded-xl border border-pink-100 mb-1.5">
+                        <span className="text-[11px] font-bold text-pink-600 block mb-1">
+                          {t}の仕様 <span className="text-[9px] font-normal text-pink-400">（1つ以上選択必須）</span>
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {ITEM_SUB_OPTIONS[t].map(sub => {
+                            const subs = wantedForm.typeSubMap?.[t] || [];
+                            const isSubSel = subs.includes(sub);
+                            return (
+                              <button
+                                type="button"
+                                key={sub}
+                                onClick={() => {
+                                  const nextSubs = isSubSel ? subs.filter(x => x !== sub) : [...subs, sub];
+                                  setWantedForm(p => ({
+                                    ...p,
+                                    typeSubMap: { ...(p.typeSubMap || {}), [t]: nextSubs }
+                                  }));
+                                }}
+                                className={`px-2 py-0.5 rounded-lg text-xs font-bold border transition-all ${
+                                  isSubSel ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {isSubSel ? '✓ ' : ''}{sub}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">絵柄名・カード名</label>
-                    <input type="text" placeholder="例：特訓後「導きの乙女」" value={wantedForm.name} onChange={e => setWantedForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-pink-200 bg-white" />
+                  {/* 絵柄名 & 希望数（少数、∞対応） */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">絵柄名・カード名</label>
+                      <input type="text" placeholder="例：特訓後「導きの乙女」" value={wantedForm.name} onChange={e => setWantedForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-pink-200 bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">希望個数</label>
+                      <input
+                        type="text"
+                        placeholder="例: 1, 少数, ∞"
+                        value={wantedForm.count || ''}
+                        onChange={e => setWantedForm(p => ({ ...p, count: e.target.value }))}
+                        className="w-full px-2 py-2 rounded-xl border border-pink-200 bg-white text-center text-xs"
+                      />
+                    </div>
                   </div>
 
+                  {/* 希望数のクイック入力ボタン */}
+                  <div className="flex items-center gap-1.5 justify-end">
+                    <span className="text-[10px] text-slate-400">クイック入力:</span>
+                    {['1', '2', '少数', '∞'].map(val => (
+                      <button
+                        type="button"
+                        key={val}
+                        onClick={() => setWantedForm(p => ({ ...p, count: val }))}
+                        className="px-2 py-0.5 bg-pink-50 border border-pink-200 text-pink-600 rounded-md text-[10px] font-bold hover:bg-pink-100"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ユニット選択 */}
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">キャラクター（選ぶと所属ユニットも自動登録）</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">
+                      ユニット <span className="text-[10px] font-normal text-slate-400">（選ぶと下のキャラが絞り込まれます）</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {UNITS.map(u => {
+                        const isSel = (wantedForm.units || []).includes(u.id);
+                        return <button type="button" key={u.id} onClick={() => {
+                          const curr = wantedForm.units || [];
+                          setWantedForm(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
+                        }} className={`px-2.5 py-1 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
+                      })}
+                    </div>
+                  </div>
+
+                  {/* キャラクター選択 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">
+                      キャラクター（複数可）
+                    </label>
                     <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1.5 border border-pink-100 rounded-xl bg-slate-50/50">
-                      {CHARACTERS.map(c => {
+                      {availableCharactersWantedForm.map(c => {
                         const isSel = (wantedForm.characters || []).includes(c.id);
                         return (
                           <button
@@ -929,19 +1217,6 @@
                             {isSel ? '✓ ' : ''}{c.name}
                           </button>
                         );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">ユニット（自動連動・複数可）</label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {UNITS.map(u => {
-                        const isSel = (wantedForm.units || []).includes(u.id);
-                        return <button type="button" key={u.id} onClick={() => {
-                          const curr = wantedForm.units || [];
-                          setWantedForm(p => ({ ...p, units: isSel ? curr.filter(x => x !== u.id) : [...curr, u.id] }));
-                        }} className={`px-2 py-1 rounded-xl text-xs font-semibold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{isSel ? '✓ ' : ''}{u.name}</button>
                       })}
                     </div>
                   </div>
@@ -1051,7 +1326,7 @@
                     </div>
                   )}
 
-                  {/* 在庫タブ限定：レート（未設定も選択可能） */}
+                  {/* 在庫タブ限定：レート */}
                   {activeTab === 'inventory' && (
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">レート（未設定も指定可能）</label>
@@ -1087,14 +1362,40 @@
                     </div>
                   )}
 
+                  {/* グッズの種類 & サブ属性絞り込み */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズの種類</label>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 mb-2">
                       {ITEM_TYPES.map(t => {
                         const isSel = filterTypes.includes(t);
                         return <button key={t} onClick={() => toggleArray(setFilterTypes, t)} className={`px-2 py-1 rounded-lg text-[11px] font-medium border ${isSel ? 'bg-pink-100 text-pink-700 border-pink-200' : 'bg-slate-50 text-slate-500'}`}>{t}</button>
                       })}
                     </div>
+
+                    {/* 選択されたグッズの仕様絞り込み（未選択なら全表示） */}
+                    {filterTypes.filter(t => ITEM_SUB_OPTIONS[t]).map(t => (
+                      <div key={t} className="bg-rose-50/50 p-2 rounded-xl border border-rose-100 mb-1.5">
+                        <span className="text-[11px] font-bold text-rose-600 block mb-1">
+                          {t}の仕様 <span className="text-[9px] font-normal text-rose-400">（未選択の場合はすべて表示）</span>
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {ITEM_SUB_OPTIONS[t].map(sub => {
+                            const isSubSel = (filterSubTypes[t] || []).includes(sub);
+                            return (
+                              <button
+                                key={sub}
+                                onClick={() => toggleFilterSubType(t, sub)}
+                                className={`px-2 py-0.5 rounded-lg text-xs font-semibold border ${
+                                  isSubSel ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-slate-600'
+                                }`}
+                              >
+                                {isSubSel ? '✓ ' : ''}{sub}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   {/* ユニット選択 */}
@@ -1103,7 +1404,7 @@
                     <div className="flex flex-wrap gap-1.5">
                       {UNITS.map(u => {
                         const isSel = filterUnits.includes(u.id);
-                        return <button key={u.id} onClick={() => toggleArray(setFilterUnits, u.id)} className={`px-2 py-1 rounded-xl text-xs font-bold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{u.name}</button>
+                        return <button key={u.id} onClick={() => toggleArray(setFilterUnits, u.id)} className={`px-2.5 py-1 rounded-xl text-xs font-bold border ${isSel ? u.color + ' ring-2' : 'bg-slate-50 text-slate-500'}`}>{u.name}</button>
                       })}
                     </div>
                   </div>

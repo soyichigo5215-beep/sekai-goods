@@ -57,7 +57,6 @@
       '特典', 'はぴこれ', 'アクリルスタンド', 'キーホルダー', 'クリアファイル', 'その他'
     ];
 
-    // サブ属性（仕様）の選択肢（先頭がデフォルト値）
     const ITEM_SUB_OPTIONS = {
       'エピカ': ['N', '特訓前', '特訓後', '箔押し', 'その他'],
       'ぱしゃこれ': ['N', '箔押し'],
@@ -113,7 +112,6 @@
       return `${type}:${subTypes.join(' ')}`;
     };
 
-    // 既存データの正規化
     const normalizeItemData = (item) => {
       let type = item.type;
       let subTypes = Array.isArray(item.subTypes) ? [...item.subTypes] : [];
@@ -196,13 +194,13 @@
       db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(id);
     };
 
-    // --- 初期フォーム状態（エピカ・ぱしゃこれ・メモステはNがデフォルト） ---
+    // --- 初期フォーム状態 ---
     const initialGoodsForm = {
-      id: '', isWanted: false, name: '', type: 'エピカ', subTypes: ['N'],
+      id: '', isWanted: false, type: 'エピカ', subTypes: ['N'],
       units: [], characters: [], statuses: ['譲'], count: 1, rate: '', memo: '', image: '', createdAt: 0
     };
     const initialWantedForm = {
-      id: '', isWanted: true, name: '', types: ['エピカ'], typeSubMap: { 'エピカ': ['N'] },
+      id: '', isWanted: true, types: ['エピカ'], typeSubMap: { 'エピカ': ['N'] },
       units: [], characters: [], priority: '最優先', count: '1', memo: '', image: '', createdAt: 0
     };
 
@@ -229,30 +227,54 @@
       ctx.closePath();
     }
 
-    function wrapTextLines(ctx, text, maxWidth, maxLines) {
-      if (!text) return [];
-      const chars = Array.from(text);
+    // 改行と最大幅を考慮した複数行折り返し計算
+    function wrapMultilineText(ctx, text, maxWidth, maxLines) {
+      if (!text || !text.trim()) return [];
+      const paragraphs = text.split(/\r?\n/);
       const lines = [];
-      let current = '';
-      for (let i = 0; i < chars.length; i++) {
-        const test = current + chars[i];
-        if (ctx.measureText(test).width > maxWidth && current !== '') {
-          lines.push(current);
-          current = chars[i];
-          if (lines.length === maxLines) {
-            // 最後の行がはみ出る場合は省略記号
-            while (current.length > 0 && ctx.measureText(current + '…').width > maxWidth) {
-              current = current.slice(0, -1);
+
+      for (let p = 0; p < paragraphs.length; p++) {
+        const chars = Array.from(paragraphs[p]);
+        if (chars.length === 0) {
+          if (lines.length < maxLines) lines.push('');
+          continue;
+        }
+        let current = '';
+        for (let i = 0; i < chars.length; i++) {
+          const test = current + chars[i];
+          if (ctx.measureText(test).width > maxWidth && current !== '') {
+            lines.push(current);
+            current = chars[i];
+            if (lines.length === maxLines) {
+              while (current.length > 0 && ctx.measureText(current + '…').width > maxWidth) {
+                current = current.slice(0, -1);
+              }
+              lines[maxLines - 1] = current + '…';
+              return lines;
             }
-            lines[maxLines - 1] = current + '…';
+          } else {
+            current = test;
+          }
+        }
+        if (current) {
+          if (lines.length === maxLines) {
+            let last = lines[maxLines - 1];
+            while (last.length > 0 && ctx.measureText(last + '…').width > maxWidth) {
+              last = last.slice(0, -1);
+            }
+            lines[maxLines - 1] = last + '…';
             return lines;
           }
-        } else {
-          current = test;
+          lines.push(current);
+          if (lines.length === maxLines && p < paragraphs.length - 1) {
+            let last = lines[maxLines - 1];
+            while (last.length > 0 && ctx.measureText(last + '…').width > maxWidth) {
+              last = last.slice(0, -1);
+            }
+            lines[maxLines - 1] = last + '…';
+            return lines;
+          }
         }
-      }
-      if (current && lines.length < maxLines) {
-        lines.push(current);
       }
       return lines;
     }
@@ -270,17 +292,19 @@
       const [activeTab, setActiveTab] = useState('inventory');
       
       const [isGoodsModalOpen, setIsGoodsModalOpen] = useState(false);
+      const [isGoodsEditing, setIsGoodsEditing] = useState(false);
+
       const [isWantedModalOpen, setIsWantedModalOpen] = useState(false);
+      const [isWantedEditing, setIsWantedEditing] = useState(false);
+
       const [isFilterOpen, setIsFilterOpen] = useState(false);
       const [previewImage, setPreviewImage] = useState(null);
 
-      // タブごとの並び替え状態
-      const [inventorySortBy, setInventorySortBy] = useState('registered'); // 'registered' | 'character' | 'type' | 'rate'
-      const [wantedSortBy, setWantedSortBy] = useState('registered');       // 'registered' | 'character' | 'type' | 'priority'
+      const [inventorySortBy, setInventorySortBy] = useState('registered');
+      const [wantedSortBy, setWantedSortBy] = useState('registered');
 
       const [showRateComparison, setShowRateComparison] = useState(false);
 
-      // 画像出力モーダル状態
       const [isGeneratingImage, setIsGeneratingImage] = useState(false);
       const [exportedImageUrl, setExportedImageUrl] = useState(null);
 
@@ -317,13 +341,15 @@
       const wantedItems = useMemo(() => items.filter(i => i.isWanted), [items]);
 
       const openAddGoods = () => {
+        setIsGoodsEditing(false);
         setGoodsForm({ ...initialGoodsForm, id: 'goods_' + Date.now(), createdAt: Date.now() });
         setIsGoodsModalOpen(true);
       };
       const openEditGoods = (item) => {
         const normalized = normalizeItemData(item);
+        setIsGoodsEditing(true);
         setGoodsForm({
-          id: normalized.id, isWanted: false, name: normalized.name || '', type: normalized.type || 'エピカ',
+          id: normalized.id, isWanted: false, type: normalized.type || 'エピカ',
           subTypes: normalized.subTypes && normalized.subTypes.length > 0 ? normalized.subTypes : (ITEM_SUB_OPTIONS[normalized.type] ? [ITEM_SUB_OPTIONS[normalized.type][0]] : []),
           units: normalized.units || [], characters: normalized.characters || [], statuses: normalized.statuses || ['譲'],
           count: normalized.count || 1, rate: normalized.rate || '', memo: normalized.memo || '', image: normalized.image || '',
@@ -333,13 +359,15 @@
       };
 
       const openAddWanted = () => {
+        setIsWantedEditing(false);
         setWantedForm({ ...initialWantedForm, id: 'wanted_' + Date.now(), createdAt: Date.now() });
         setIsWantedModalOpen(true);
       };
       const openEditWanted = (item) => {
         const normalized = normalizeItemData(item);
+        setIsWantedEditing(true);
         setWantedForm({
-          id: normalized.id, isWanted: true, name: normalized.name || '', types: normalized.types || ['エピカ'],
+          id: normalized.id, isWanted: true, types: normalized.types || ['エピカ'],
           typeSubMap: normalized.typeSubMap || {},
           units: normalized.units || [], characters: normalized.characters || [],
           priority: getPriorityConf(normalized.priority).id,
@@ -546,10 +574,9 @@
       // フィルタリング & ソート
       const sortedAndFilteredList = useMemo(() => {
         const filtered = activeList.filter(item => {
-          const name = item.name || '';
           const memo = item.memo || '';
           const chars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name || '').join(' ');
-          const searchMatch = !searchTerm || (name + ' ' + memo + ' ' + chars).toLowerCase().includes(searchTerm.toLowerCase());
+          const searchMatch = !searchTerm || (memo + ' ' + chars).toLowerCase().includes(searchTerm.toLowerCase());
 
           let typeMatch = true;
           if (filterTypes.length > 0) {
@@ -655,7 +682,7 @@
         return CHARACTERS.filter(c => wantedForm.units.includes(c.unit));
       }, [wantedForm.units]);
 
-      // --- 📷 一覧を画像として生成する処理 ---
+      // --- 📷 一覧を画像として生成する処理（名称なし・メモあり） ---
       const handleExportListImage = async () => {
         if (sortedAndFilteredList.length === 0) {
           alert('現在表示されているアイテムがありません');
@@ -667,10 +694,8 @@
           const isInventory = activeTab === 'inventory';
           const titleText = isInventory ? 'プロセカ 所持グッズ一覧' : 'プロセカ 求め一覧';
 
-          // 1. 全画像を並列読み込み
           const loadedImages = await Promise.all(list.map(item => loadHtmlImage(item.image)));
 
-          // 2. レイアウト寸法計算（横幅1200px固定・4列グリッド・横一列の高さ揃え）
           const CANVAS_W = 1200;
           const PADDING_X = 36;
           const PADDING_TOP = 32;
@@ -679,10 +704,9 @@
           const COLS = 4;
           const GAP_X = 18;
           const GAP_Y = 20;
-          const cardW = Math.floor((CANVAS_W - PADDING_X * 2 - GAP_X * (COLS - 1)) / COLS); // 268px
+          const cardW = Math.floor((CANVAS_W - PADDING_X * 2 - GAP_X * (COLS - 1)) / COLS);
           const textInnerW = cardW - 24;
 
-          // 計測用仮Canvas
           const measureCanvas = document.createElement('canvas');
           const mCtx = measureCanvas.getContext('2d');
           const fontBase = '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif';
@@ -716,12 +740,6 @@
             });
             const badgesBlockH = badgeRowCount * 24 + (badgeRowCount - 1) * 5;
 
-            // タイトルの行数計算（最大2行）
-            mCtx.font = `bold 18px ${fontBase}`;
-            const titleStr = item.name || (item.isWanted ? '絵柄名未設定' : '名称未設定');
-            const titleLines = wrapTextLines(mCtx, titleStr, textInnerW, 2);
-            const titleBlockH = titleLines.length * 24;
-
             // キャラタグの行数計算
             const itemChars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name).filter(Boolean);
             mCtx.font = `600 14px ${fontBase}`;
@@ -736,9 +754,18 @@
                 curCharW += cw + 5;
               }
             });
-            const charsBlockH = charRowCount > 0 ? (charRowCount * 22 + (charRowCount - 1) * 4 + 6) : 0;
+            const charsBlockH = charRowCount > 0 ? (charRowCount * 22 + (charRowCount - 1) * 4) : 0;
 
-            const textAreaH = 12 + badgesBlockH + 8 + titleBlockH + charsBlockH + 12;
+            // メモの行数計算（ある場合のみ最大3行）
+            const trimmedMemo = (item.memo || '').trim();
+            mCtx.font = `500 14px ${fontBase}`;
+            const memoLines = trimmedMemo ? wrapMultilineText(mCtx, trimmedMemo, textInnerW - 14, 3) : [];
+            const memoBlockH = memoLines.length > 0 ? (memoLines.length * 19 + 12) : 0;
+
+            let textAreaH = 12 + badgesBlockH + 12;
+            if (charsBlockH > 0) textAreaH += 6 + charsBlockH;
+            if (memoBlockH > 0) textAreaH += 7 + memoBlockH;
+
             const totalCardH = imgH + textAreaH;
 
             return {
@@ -746,13 +773,14 @@
               img,
               imgH,
               typeBadges,
-              titleLines,
               itemChars,
+              memoLines,
+              memoBlockH,
               totalCardH
             };
           });
 
-          // 4個ずつの行に分割し、各行の最大高さ（横一列の高さ）を決定
+          // 4個ずつの行に分割し、横一列の始まり位置とカード高さを揃える
           const rows = [];
           for (let i = 0; i < cardMetas.length; i += COLS) {
             const slice = cardMetas.slice(i, i + COLS);
@@ -763,20 +791,19 @@
           const totalCardsHeight = rows.reduce((sum, r) => sum + r.rowHeight, 0) + Math.max(0, rows.length - 1) * GAP_Y;
           const CANVAS_H = PADDING_TOP + HEADER_H + totalCardsHeight + PADDING_BOTTOM;
 
-          // 3. 本番Canvas生成・描画
           const outCanvas = document.createElement('canvas');
           outCanvas.width = CANVAS_W;
           outCanvas.height = CANVAS_H;
           const ctx = outCanvas.getContext('2d');
 
-          // 全体背景（優しいパステルピンク）
+          // 全体背景
           const bgGrad = ctx.createLinearGradient(0, 0, CANVAS_W, CANVAS_H);
           bgGrad.addColorStop(0, '#fff1f2');
           bgGrad.addColorStop(1, '#fdf2f8');
           ctx.fillStyle = bgGrad;
           ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-          // 最上段タイトルヘッダー描画（不要なUIは一切なし）
+          // 最上段タイトルヘッダー
           const headerY = PADDING_TOP;
           drawRoundRect(ctx, PADDING_X, headerY, CANVAS_W - PADDING_X * 2, 64, 20);
           ctx.fillStyle = '#ffffff';
@@ -785,35 +812,31 @@
           ctx.strokeStyle = isInventory ? '#fecdd3' : '#fbcfe8';
           ctx.stroke();
 
-          // 左端アクセントバー
           drawRoundRect(ctx, PADDING_X + 16, headerY + 16, 8, 32, 4);
           ctx.fillStyle = isInventory ? '#fb7185' : '#ec4899';
           ctx.fill();
 
-          // タイトル文字
           ctx.fillStyle = '#1e293b';
           ctx.font = `900 28px ${fontBase}`;
           ctx.textBaseline = 'middle';
           ctx.fillText(titleText, PADDING_X + 36, headerY + 33);
 
-          // 右端に総数のみ控えめに表示
           ctx.fillStyle = isInventory ? '#f43f5e' : '#db2777';
           ctx.font = `bold 18px ${fontBase}`;
           const countLabel = `全 ${list.length} 点`;
           const countW = ctx.measureText(countLabel).width;
           ctx.fillText(countLabel, CANVAS_W - PADDING_X - 24 - countW, headerY + 33);
 
-          // 各行の描画（横一列の上端が完全に揃う）
+          // 各行の描画
           let currentY = PADDING_TOP + HEADER_H;
 
           rows.forEach((row) => {
             row.cards.forEach((meta, colIdx) => {
               const cardX = PADDING_X + colIdx * (cardW + GAP_X);
               const cardY = currentY;
-              const cardH = row.rowHeight; // 横一列のカード高さを揃える
-              const { item, img, imgH, typeBadges, titleLines, itemChars } = meta;
+              const cardH = row.rowHeight;
+              const { item, img, imgH, typeBadges, itemChars, memoLines, memoBlockH } = meta;
 
-              // カード影・白枠
               ctx.save();
               ctx.shadowColor = 'rgba(244, 114, 182, 0.14)';
               ctx.shadowBlur = 12;
@@ -828,7 +851,7 @@
               ctx.strokeStyle = item.isWanted ? '#fbcfe8' : '#ffe4e6';
               ctx.stroke();
 
-              // 画像エリア（クリッピングして角丸に合わせる）
+              // 画像エリア
               ctx.save();
               drawTopRoundRect(ctx, cardX, cardY, cardW, imgH, 16);
               ctx.clip();
@@ -849,9 +872,8 @@
               }
               ctx.restore();
 
-              // 画像上のバッジ描画（レートバッジは強制オフで絶対に描かない！）
+              // 画像上のバッジ描画（レートバッジは強制オフ）
               if (!item.isWanted) {
-                // 在庫：ステータスバッジ（左上）
                 let stY = cardY + 8;
                 (item.statuses || []).slice(0, 2).forEach(rawSt => {
                   const st = normalizeStatus(rawSt);
@@ -871,7 +893,6 @@
                   stY += 26;
                 });
 
-                // 在庫：個数（右上・2個以上）
                 if ((item.count || 1) > 1) {
                   const cntStr = `×${item.count}`;
                   ctx.font = `900 15px ${fontBase}`;
@@ -884,7 +905,6 @@
                   ctx.fillText(cntStr, cardX + cardW - cw - 1, cardY + 20);
                 }
               } else {
-                // 求め絵柄：優先度バッジ（左上・大きく見やすいサイズ）
                 const prioConf = getPriorityConf(item.priority);
                 ctx.font = `900 19px ${fontBase}`;
                 const pw = ctx.measureText(prioConf.label).width + 20;
@@ -895,7 +915,6 @@
                 ctx.textBaseline = 'middle';
                 ctx.fillText(prioConf.label, cardX + 18, cardY + 24);
 
-                // 求め絵柄：希望個数（右上）
                 if (item.count) {
                   const cntStr = `×${item.count}`;
                   ctx.font = `900 15px ${fontBase}`;
@@ -938,20 +957,11 @@
                 ctx.fillText(drawText, bx + 7, ty + 12);
                 bx += bw + 6;
               });
-              ty += 32;
-
-              // タイトル（グッズ名・絵柄名）
-              ctx.fillStyle = '#1e293b';
-              ctx.font = `bold 18px ${fontBase}`;
-              ctx.textBaseline = 'top';
-              titleLines.forEach(line => {
-                ctx.fillText(line, txStart, ty);
-                ty += 24;
-              });
+              ty += 24;
 
               // キャラクタータグ
               if (itemChars.length > 0) {
-                ty += 4;
+                ty += 6;
                 ctx.font = `600 14px ${fontBase}`;
                 let cx = txStart;
                 itemChars.forEach(cName => {
@@ -971,6 +981,27 @@
                   ctx.textBaseline = 'middle';
                   ctx.fillText(cName, cx + 6, ty + 11);
                   cx += cw + 5;
+                });
+                ty += 22;
+              }
+
+              // メモ（入力がある場合のみ枠付きで表示）
+              if (memoLines.length > 0) {
+                ty += 7;
+                drawRoundRect(ctx, txStart, ty, textInnerW, memoBlockH, 7);
+                ctx.fillStyle = item.isWanted ? '#fdf2f8' : '#fff1f2';
+                ctx.fill();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = item.isWanted ? '#fbcfe8' : '#ffe4e6';
+                ctx.stroke();
+
+                ctx.fillStyle = '#475569';
+                ctx.font = `500 14px ${fontBase}`;
+                ctx.textBaseline = 'top';
+                let my = ty + 6;
+                memoLines.forEach(mLine => {
+                  ctx.fillText(mLine, txStart + 7, my);
+                  my += 19;
                 });
               }
             });
@@ -1015,7 +1046,7 @@
             handleDownloadExportedImage();
           }
         } catch (e) {
-          // キャンセル時などは無視
+          // キャンセル時は無視
         }
       };
 
@@ -1066,7 +1097,7 @@
           <section className="bg-white/95 p-2.5 rounded-2xl shadow-sm border border-rose-100 mb-2.5 flex gap-2">
             <input
               type="text"
-              placeholder={activeTab === 'inventory' ? "🔍 グッズ名・キャラ名・メモ" : "🔍 絵柄名・キャラ名・求メモ"}
+              placeholder="🔍 キャラ名・メモで検索"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="flex-1 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/20 text-xs focus:outline-none focus:ring-2 focus:ring-rose-300"
@@ -1205,7 +1236,7 @@
                         onClick={() => item.image && setPreviewImage(item.image)}
                       >
                         {item.image ? (
-                          <img src={item.image} alt={item.name} className="w-full h-auto object-contain block" />
+                          <img src={item.image} alt={typeLabel} className="w-full h-auto object-contain block" />
                         ) : (
                           <div className="w-full aspect-square bg-rose-50/50 flex items-center justify-center text-rose-200 text-lg">✨</div>
                         )}
@@ -1237,14 +1268,12 @@
 
                       <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
                         <div>
-                          <div className="mb-0.5">
+                          <div className="mb-1">
                             <span className="text-[9px] font-bold text-pink-600 bg-pink-50 px-1 py-0.2 rounded inline-block max-w-full truncate" title={typeLabel}>
                               {typeLabel}
                             </span>
                           </div>
-                          <h4 className="font-bold text-slate-800 text-[11px] leading-tight line-clamp-2 mb-1">
-                            {item.name || '名称未設定'}
-                          </h4>
+
                           {itemChars.length > 0 && (
                             <div className="flex flex-wrap gap-0.5 mb-1">
                               {itemChars.map(c => (
@@ -1253,6 +1282,13 @@
                                 </span>
                               ))}
                             </div>
+                          )}
+
+                          {/* メモ（入力がある場合のみ表示） */}
+                          {item.memo && item.memo.trim() && (
+                            <p className="text-[9px] text-slate-600 bg-rose-50/70 border border-rose-100/80 px-1.5 py-1 rounded-md mb-1 whitespace-pre-wrap break-words leading-snug">
+                              {item.memo}
+                            </p>
                           )}
                         </div>
 
@@ -1264,7 +1300,7 @@
                     </div>
                   );
                 } else {
-                  /* ================= 💖 求め絵柄 ミニカード（優先度表示を約2倍サイズに拡大） ================= */
+                  /* ================= 💖 求め絵柄 ミニカード ================= */
                   const prioConf = getPriorityConf(item.priority);
                   return (
                     <div
@@ -1276,11 +1312,10 @@
                         onClick={() => item.image && setPreviewImage(item.image)}
                       >
                         {item.image ? (
-                          <img src={item.image} alt={item.name} className="w-full h-auto object-contain block" />
+                          <img src={item.image} alt="求め絵柄" className="w-full h-auto object-contain block" />
                         ) : (
                           <div className="w-full aspect-square bg-pink-50/50 flex items-center justify-center text-pink-300 text-lg">🖼️</div>
                         )}
-                        {/* 優先度バッジ（約2倍のサイズ・視認性強化） */}
                         <div className="absolute top-1.5 left-1.5">
                           <span className={`text-xs sm:text-sm font-black px-2.5 py-1 rounded-lg shadow-md tracking-wide inline-block ${prioConf.color}`}>
                             {prioConf.label}
@@ -1310,10 +1345,6 @@
                               <span className="text-[8px] text-slate-400">指定なし</span>
                             )}
                           </div>
-                          
-                          <h4 className="font-bold text-slate-800 text-[11px] leading-tight line-clamp-2 mb-1">
-                            {item.name || '絵柄名未設定'}
-                          </h4>
 
                           {itemChars.length > 0 && (
                             <div className="flex flex-wrap gap-0.5 mb-1">
@@ -1323,6 +1354,13 @@
                                 </span>
                               ))}
                             </div>
+                          )}
+
+                          {/* メモ（入力がある場合のみ表示） */}
+                          {item.memo && item.memo.trim() && (
+                            <p className="text-[9px] text-slate-600 bg-pink-50/70 border border-pink-100/80 px-1.5 py-1 rounded-md mb-1 whitespace-pre-wrap break-words leading-snug">
+                              {item.memo}
+                            </p>
                           )}
                         </div>
 
@@ -1351,7 +1389,7 @@
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
               <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
                 <div className="px-5 py-3.5 border-b border-rose-100 flex items-center justify-between">
-                  <h2 className="text-base font-bold text-slate-800">{goodsForm.name ? 'グッズの編集' : '新しいグッズを登録'}</h2>
+                  <h2 className="text-base font-bold text-slate-800">{isGoodsEditing ? 'グッズの編集' : '新しいグッズを登録'}</h2>
                   <button onClick={() => setIsGoodsModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400">✕</button>
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); handleSave(goodsForm, () => setIsGoodsModalOpen(false)); }} className="p-4 overflow-y-auto space-y-3.5 text-xs hide-scrollbar">
@@ -1373,19 +1411,26 @@
                     )}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">種類</label>
-                    <select
-                      value={goodsForm.type}
-                      onChange={e => {
-                        const nextType = e.target.value;
-                        const defaultSubs = ITEM_SUB_OPTIONS[nextType] ? [ITEM_SUB_OPTIONS[nextType][0]] : [];
-                        setGoodsForm(p => ({ ...p, type: nextType, subTypes: defaultSubs }));
-                      }}
-                      className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white"
-                    >
-                      {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                  {/* 種類 & 所持数 */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold text-slate-600 mb-1">種類</label>
+                      <select
+                        value={goodsForm.type}
+                        onChange={e => {
+                          const nextType = e.target.value;
+                          const defaultSubs = ITEM_SUB_OPTIONS[nextType] ? [ITEM_SUB_OPTIONS[nextType][0]] : [];
+                          setGoodsForm(p => ({ ...p, type: nextType, subTypes: defaultSubs }));
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white"
+                      >
+                        {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">所持数</label>
+                      <input type="number" min="1" value={goodsForm.count} onChange={e => setGoodsForm(p => ({ ...p, count: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-center" />
+                    </div>
                   </div>
 
                   {ITEM_SUB_OPTIONS[goodsForm.type] && (
@@ -1418,17 +1463,6 @@
                       </div>
                     </div>
                   )}
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-600 mb-1">グッズ名・絵柄</label>
-                      <input type="text" placeholder="例：特訓前" value={goodsForm.name} onChange={e => setGoodsForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">所持数</label>
-                      <input type="number" min="1" value={goodsForm.count} onChange={e => setGoodsForm(p => ({ ...p, count: parseInt(e.target.value) || 1 }))} className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-center" />
-                    </div>
-                  </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -1515,7 +1549,7 @@
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">メモ</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">メモ（入力すると一覧にも表示されます）</label>
                     <textarea rows="2" placeholder="@twitter_id 様と交換予定" value={goodsForm.memo} onChange={e => setGoodsForm(p => ({ ...p, memo: e.target.value }))} className="w-full px-3 py-1.5 rounded-xl border border-rose-200 text-xs" />
                   </div>
                   <div className="pt-1">
@@ -1531,7 +1565,7 @@
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-30 p-0 sm:p-4">
               <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
                 <div className="px-5 py-3.5 border-b border-pink-100 flex items-center justify-between">
-                  <h2 className="text-base font-bold text-slate-800">{wantedForm.name ? '求め絵柄の編集' : '新しい求め絵柄を登録'}</h2>
+                  <h2 className="text-base font-bold text-slate-800">{isWantedEditing ? '求め絵柄の編集' : '新しい求め絵柄を登録'}</h2>
                   <button onClick={() => setIsWantedModalOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400">✕</button>
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); handleSave(wantedForm, () => setIsWantedModalOpen(false)); }} className="p-4 overflow-y-auto space-y-3.5 text-xs hide-scrollbar">
@@ -1631,35 +1665,34 @@
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-bold text-slate-600 mb-1">絵柄名・カード名</label>
-                      <input type="text" placeholder="例：特訓後「導きの乙女」" value={wantedForm.name} onChange={e => setWantedForm(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 rounded-xl border border-pink-200 bg-white" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">希望個数</label>
+                  {/* 希望個数 & クイック入力 */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">希望個数</label>
+                    <div className="flex items-center gap-2">
                       <input
                         type="text"
                         placeholder="例: 1, 少数, ∞"
                         value={wantedForm.count || ''}
                         onChange={e => setWantedForm(p => ({ ...p, count: e.target.value }))}
-                        className="w-full px-2 py-2 rounded-xl border border-pink-200 bg-white text-center text-xs"
+                        className="w-28 px-3 py-2 rounded-xl border border-pink-200 bg-white text-center text-xs font-bold"
                       />
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {['1', '2', '少数', '∞'].map(val => (
+                          <button
+                            type="button"
+                            key={val}
+                            onClick={() => setWantedForm(p => ({ ...p, count: val }))}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                              wantedForm.count === val
+                                ? 'bg-pink-400 text-white border-pink-400 shadow-xs'
+                                : 'bg-pink-50 border-pink-200 text-pink-600 hover:bg-pink-100'
+                            }`}
+                          >
+                            {val}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 justify-end">
-                    <span className="text-[10px] text-slate-400">クイック入力:</span>
-                    {['1', '2', '少数', '∞'].map(val => (
-                      <button
-                        type="button"
-                        key={val}
-                        onClick={() => setWantedForm(p => ({ ...p, count: val }))}
-                        className="px-2 py-0.5 bg-pink-50 border border-pink-200 text-pink-600 rounded-md text-[10px] font-bold hover:bg-pink-100"
-                      >
-                        {val}
-                      </button>
-                    ))}
                   </div>
 
                   <div>
@@ -1699,7 +1732,7 @@
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">求め条件メモ</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">求め条件メモ（入力すると一覧にも表示されます）</label>
                     <textarea rows="2" placeholder="例：同種司と1:1交換希望" value={wantedForm.memo} onChange={e => setWantedForm(p => ({ ...p, memo: e.target.value }))} className="w-full px-3 py-1.5 rounded-xl border border-pink-200 text-xs" />
                   </div>
                   <div className="pt-1">

@@ -52,38 +52,37 @@
       { id: 'kanade', name: '宵崎奏', unit: 'niigo' }, { id: 'mafuyu', name: '朝比奈まふゆ', unit: 'niigo' }, { id: 'ena', name: '東雲絵名', unit: 'niigo' }, { id: 'mizuki', name: '暁山瑞希', unit: 'niigo' },
     ];
 
-    // グッズ種類（箔押し統合版）
     const ITEM_TYPES = [
       'エピカ', 'ぱしゃこれ', 'メモステ', '色紙', '缶バッジ',
       '特典', 'はぴこれ', 'アクリルスタンド', 'キーホルダー', 'クリアファイル', 'その他'
     ];
 
-    // サブ属性（仕様）の選択肢
+    // サブ属性（仕様）の選択肢（先頭がデフォルト値）
     const ITEM_SUB_OPTIONS = {
-      'エピカ': ['特訓前', '特訓後', '箔押し', 'その他'],
-      'メモステ': ['小', '大', '箔押し', 'その他'],
-      'ぱしゃこれ': ['ノーマル', '箔押し'],
+      'エピカ': ['N', '特訓前', '特訓後', '箔押し', 'その他'],
+      'ぱしゃこれ': ['N', '箔押し'],
+      'メモステ': ['N', '小', '大', '箔押し', 'その他'],
       '色紙': ['特訓前', '特訓後', 'その他'],
       '缶バッジ': ['特訓前', '特訓後', 'その他'],
     };
 
     const STATUS_OPTIONS = [
-      { label: '譲', bg: 'bg-pink-100 text-pink-700 border-pink-200' },
-      { label: '求', bg: 'bg-sky-100 text-sky-700 border-sky-200' },
-      { label: '所持', bg: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-      { label: '交換予定', bg: 'bg-amber-100 text-amber-700 border-amber-200' },
-      { label: '譲渡予定', bg: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-      { label: '予約済', bg: 'bg-teal-100 text-teal-700 border-teal-200' },
-      { label: '保留', bg: 'bg-purple-100 text-purple-700 border-purple-200' },
+      { label: '譲', bg: 'bg-pink-100 text-pink-700 border-pink-200', hexBg: '#fce7f3', hexText: '#be185d', hexBorder: '#fbcfe8' },
+      { label: '求', bg: 'bg-sky-100 text-sky-700 border-sky-200', hexBg: '#e0f2fe', hexText: '#0369a1', hexBorder: '#bae6fd' },
+      { label: '所持', bg: 'bg-emerald-100 text-emerald-700 border-emerald-200', hexBg: '#d1fae5', hexText: '#047857', hexBorder: '#a7f3d0' },
+      { label: '交換予定', bg: 'bg-amber-100 text-amber-700 border-amber-200', hexBg: '#fef3c7', hexText: '#b45309', hexBorder: '#fde68a' },
+      { label: '譲渡予定', bg: 'bg-indigo-100 text-indigo-700 border-indigo-200', hexBg: '#e0e7ff', hexText: '#4338ca', hexBorder: '#c7d2fe' },
+      { label: '予約済', bg: 'bg-teal-100 text-teal-700 border-teal-200', hexBg: '#ccfbf1', hexText: '#0f766e', hexBorder: '#99f6e4' },
+      { label: '保留', bg: 'bg-purple-100 text-purple-700 border-purple-200', hexBg: '#f3e8ff', hexText: '#7e22ce', hexBorder: '#e9d5ff' },
     ];
 
     const normalizeStatus = (st) => (st === '交換中' ? '交換予定' : st);
 
     const PRIORITIES = [
-      { id: '最優先', label: '最優先', color: 'bg-rose-500 text-white shadow-sm shadow-rose-200' },
-      { id: '優先', label: '優先', color: 'bg-pink-400 text-white shadow-sm shadow-pink-200' },
-      { id: '求', label: '求', color: 'bg-sky-400 text-white shadow-sm shadow-sky-200' },
-      { id: '緩求', label: '緩求', color: 'bg-slate-400 text-white' },
+      { id: '最優先', label: '最優先', color: 'bg-rose-500 text-white shadow-sm shadow-rose-200', hexBg: '#f43f5e', hexText: '#ffffff' },
+      { id: '優先', label: '優先', color: 'bg-pink-400 text-white shadow-sm shadow-pink-200', hexBg: '#f472b6', hexText: '#ffffff' },
+      { id: '求', label: '求', color: 'bg-sky-400 text-white shadow-sm shadow-sky-200', hexBg: '#38bdf8', hexText: '#ffffff' },
+      { id: '緩求', label: '緩求', color: 'bg-slate-400 text-white', hexBg: '#94a3b8', hexText: '#ffffff' },
     ];
 
     const RATES = [
@@ -109,13 +108,12 @@
       return PRIORITIES.find(p => p.id === prio) || PRIORITIES[0];
     };
 
-    // グッズ名とサブ属性の表示フォーマット関数
     const formatTypeBadge = (type, subTypes) => {
       if (!subTypes || subTypes.length === 0) return type;
       return `${type}:${subTypes.join(' ')}`;
     };
 
-    // 既存データの正規化（過去の「エピカ(箔押し)」等との互換性）
+    // 既存データの正規化
     const normalizeItemData = (item) => {
       let type = item.type;
       let subTypes = Array.isArray(item.subTypes) ? [...item.subTypes] : [];
@@ -126,6 +124,10 @@
       if (type === 'メモステ(箔押し)') {
         type = 'メモステ';
         if (!subTypes.includes('箔押し')) subTypes.push('箔押し');
+      }
+      if (type === 'ぱしゃこれ') {
+        subTypes = subTypes.map(s => (s === 'ノーマル' ? 'N' : s));
+        subTypes = Array.from(new Set(subTypes));
       }
 
       let types = Array.isArray(item.types) ? [...item.types] : [];
@@ -144,6 +146,12 @@
         return t;
       });
       types = Array.from(new Set(types));
+
+      if (typeSubMap['ぱしゃこれ']) {
+        typeSubMap['ぱしゃこれ'] = Array.from(
+          new Set(typeSubMap['ぱしゃこれ'].map(s => (s === 'ノーマル' ? 'N' : s)))
+        );
+      }
 
       return {
         ...item,
@@ -188,15 +196,74 @@
       db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(id);
     };
 
-    // --- 初期フォーム状態 ---
+    // --- 初期フォーム状態（エピカ・ぱしゃこれ・メモステはNがデフォルト） ---
     const initialGoodsForm = {
-      id: '', isWanted: false, name: '', type: 'エピカ', subTypes: ['特訓前'],
+      id: '', isWanted: false, name: '', type: 'エピカ', subTypes: ['N'],
       units: [], characters: [], statuses: ['譲'], count: 1, rate: '', memo: '', image: '', createdAt: 0
     };
     const initialWantedForm = {
-      id: '', isWanted: true, name: '', types: ['エピカ'], typeSubMap: { 'エピカ': ['特訓前'] },
+      id: '', isWanted: true, name: '', types: ['エピカ'], typeSubMap: { 'エピカ': ['N'] },
       units: [], characters: [], priority: '最優先', count: '1', memo: '', image: '', createdAt: 0
     };
+
+    // --- Canvas 描画ヘルパー ---
+    function drawRoundRect(ctx, x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function drawTopRoundRect(ctx, x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, 0);
+      ctx.lineTo(x + w, y + h);
+      ctx.lineTo(x, y + h);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function wrapTextLines(ctx, text, maxWidth, maxLines) {
+      if (!text) return [];
+      const chars = Array.from(text);
+      const lines = [];
+      let current = '';
+      for (let i = 0; i < chars.length; i++) {
+        const test = current + chars[i];
+        if (ctx.measureText(test).width > maxWidth && current !== '') {
+          lines.push(current);
+          current = chars[i];
+          if (lines.length === maxLines) {
+            // 最後の行がはみ出る場合は省略記号
+            while (current.length > 0 && ctx.measureText(current + '…').width > maxWidth) {
+              current = current.slice(0, -1);
+            }
+            lines[maxLines - 1] = current + '…';
+            return lines;
+          }
+        } else {
+          current = test;
+        }
+      }
+      if (current && lines.length < maxLines) {
+        lines.push(current);
+      }
+      return lines;
+    }
+
+    const loadHtmlImage = (src) => new Promise((resolve) => {
+      if (!src) return resolve(null);
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
 
     function App() {
       const [items, setItems] = useState([]);
@@ -207,8 +274,15 @@
       const [isFilterOpen, setIsFilterOpen] = useState(false);
       const [previewImage, setPreviewImage] = useState(null);
 
-      const [sortBy, setSortBy] = useState('registered');
+      // タブごとの並び替え状態
+      const [inventorySortBy, setInventorySortBy] = useState('registered'); // 'registered' | 'character' | 'type' | 'rate'
+      const [wantedSortBy, setWantedSortBy] = useState('registered');       // 'registered' | 'character' | 'type' | 'priority'
+
       const [showRateComparison, setShowRateComparison] = useState(false);
+
+      // 画像出力モーダル状態
+      const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+      const [exportedImageUrl, setExportedImageUrl] = useState(null);
 
       const [goodsForm, setGoodsForm] = useState(initialGoodsForm);
       const [wantedForm, setWantedForm] = useState(initialWantedForm);
@@ -227,7 +301,7 @@
       // 検索・絞り込み状態
       const [searchTerm, setSearchTerm] = useState('');
       const [filterTypes, setFilterTypes] = useState([]);
-      const [filterSubTypes, setFilterSubTypes] = useState({}); // { [type]: ['特訓前', ...] }
+      const [filterSubTypes, setFilterSubTypes] = useState({});
       const [filterUnits, setFilterUnits] = useState([]);
       const [filterCharacters, setFilterCharacters] = useState([]);
       const [filterStatuses, setFilterStatuses] = useState([]);
@@ -276,9 +350,7 @@
         setIsWantedModalOpen(true);
       };
 
-      // 保存処理（所属ユニットの自動登録を含む）
       const handleSave = async (dataToSave, closeModal) => {
-        // バリデーション：サブ属性の必須チェック
         if (!dataToSave.isWanted) {
           if (ITEM_SUB_OPTIONS[dataToSave.type]) {
             if (!dataToSave.subTypes || dataToSave.subTypes.length === 0) {
@@ -298,7 +370,6 @@
           }
         }
 
-        // キャラクターの所属ユニットを自動補完
         const autoUnits = new Set(dataToSave.units || []);
         (dataToSave.characters || []).forEach(cid => {
           const c = CHARACTERS.find(x => x.id === cid);
@@ -325,7 +396,6 @@
         setItems(prev => prev.filter(i => i.id !== id));
       };
 
-      // キャラクター選択（ユニットを自動選択せず、純粋にキャラのみトグル）
       const handleToggleCharacter = (formSetter, charId) => {
         formSetter(prev => {
           const currChars = prev.characters || [];
@@ -413,7 +483,6 @@
         setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
       };
 
-      // 絞り込み用サブ属性トグル
       const toggleFilterSubType = (parentType, subVal) => {
         setFilterSubTypes(prev => {
           const currentList = prev[parentType] || [];
@@ -424,7 +493,7 @@
         });
       };
 
-      // ソート順序
+      // ソート順序マップ
       const charOrderMap = useMemo(() => {
         const map = {};
         CHARACTERS.forEach((c, idx) => { map[c.id] = idx; });
@@ -436,6 +505,9 @@
         ITEM_TYPES.forEach((t, idx) => { map[t] = idx; });
         return map;
       }, []);
+
+      const rateOrderMap = { '激高': 0, '高': 1, '普通': 2, '低': 3, '激低': 4 };
+      const priorityOrderMap = { '最優先': 0, '優先': 1, '求': 2, '緩求': 3 };
 
       const getItemCharRank = (item) => {
         if (!item.characters || item.characters.length === 0) return 999;
@@ -452,6 +524,16 @@
         return typeOrderMap[item.type] ?? 999;
       };
 
+      const getItemRateRank = (item) => {
+        if (!item.rate || !(item.rate in rateOrderMap)) return 99;
+        return rateOrderMap[item.rate];
+      };
+
+      const getItemPriorityRank = (item) => {
+        const pId = getPriorityConf(item.priority).id;
+        return priorityOrderMap[pId] ?? 99;
+      };
+
       const getItemTimeRank = (item) => {
         if (item.createdAt) return item.createdAt;
         const match = (item.id || '').match(/\d+/);
@@ -459,6 +541,7 @@
       };
 
       const activeList = activeTab === 'inventory' ? inventoryItems : wantedItems;
+      const currentSortBy = activeTab === 'inventory' ? inventorySortBy : wantedSortBy;
 
       // フィルタリング & ソート
       const sortedAndFilteredList = useMemo(() => {
@@ -468,29 +551,25 @@
           const chars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name || '').join(' ');
           const searchMatch = !searchTerm || (name + ' ' + memo + ' ' + chars).toLowerCase().includes(searchTerm.toLowerCase());
 
-          // グッズ種別 & サブ属性の合致判定
           let typeMatch = true;
           if (filterTypes.length > 0) {
             if (!item.isWanted) {
               if (!filterTypes.includes(item.type)) {
                 typeMatch = false;
               } else {
-                // サブ属性フィルターがある場合
                 const targetSubs = filterSubTypes[item.type] || [];
                 if (targetSubs.length > 0) {
                   typeMatch = (item.subTypes || []).some(s => targetSubs.includes(s));
                 }
               }
             } else {
-              // 求め絵柄
               const matchedTypes = (item.types || []).filter(t => filterTypes.includes(t));
               if (matchedTypes.length === 0) {
                 typeMatch = false;
               } else {
-                // サブ属性フィルターがあるか確認
                 typeMatch = matchedTypes.some(t => {
                   const targetSubs = filterSubTypes[t] || [];
-                  if (targetSubs.length === 0) return true; // 未選択なら全仕様OK
+                  if (targetSubs.length === 0) return true;
                   const itemSubs = item.typeSubMap?.[t] || [];
                   return itemSubs.some(s => targetSubs.includes(s));
                 });
@@ -524,13 +603,29 @@
         });
 
         return filtered.sort((a, b) => {
-          if (sortBy === 'character') {
+          if (currentSortBy === 'rate') {
+            const rateDiff = getItemRateRank(a) - getItemRateRank(b);
+            if (rateDiff !== 0) return rateDiff;
             const charDiff = getItemCharRank(a) - getItemCharRank(b);
             if (charDiff !== 0) return charDiff;
             const typeDiff = getItemTypeRank(a) - getItemTypeRank(b);
             if (typeDiff !== 0) return typeDiff;
             return getItemTimeRank(b) - getItemTimeRank(a);
-          } else if (sortBy === 'type') {
+          } else if (currentSortBy === 'priority') {
+            const prioDiff = getItemPriorityRank(a) - getItemPriorityRank(b);
+            if (prioDiff !== 0) return prioDiff;
+            const charDiff = getItemCharRank(a) - getItemCharRank(b);
+            if (charDiff !== 0) return charDiff;
+            const typeDiff = getItemTypeRank(a) - getItemTypeRank(b);
+            if (typeDiff !== 0) return typeDiff;
+            return getItemTimeRank(b) - getItemTimeRank(a);
+          } else if (currentSortBy === 'character') {
+            const charDiff = getItemCharRank(a) - getItemCharRank(b);
+            if (charDiff !== 0) return charDiff;
+            const typeDiff = getItemTypeRank(a) - getItemTypeRank(b);
+            if (typeDiff !== 0) return typeDiff;
+            return getItemTimeRank(b) - getItemTimeRank(a);
+          } else if (currentSortBy === 'type') {
             const typeDiff = getItemTypeRank(a) - getItemTypeRank(b);
             if (typeDiff !== 0) return typeDiff;
             const charDiff = getItemCharRank(a) - getItemCharRank(b);
@@ -540,12 +635,11 @@
             return getItemTimeRank(b) - getItemTimeRank(a);
           }
         });
-      }, [activeList, searchTerm, filterTypes, filterSubTypes, filterUnits, filterCharacters, filterStatuses, filterRates, filterPriorities, sortBy]);
+      }, [activeList, searchTerm, filterTypes, filterSubTypes, filterUnits, filterCharacters, filterStatuses, filterRates, filterPriorities, currentSortBy]);
 
       const subTypeFilterCount = Object.values(filterSubTypes).reduce((acc, cur) => acc + cur.length, 0);
       const activeFilterCount = filterTypes.length + subTypeFilterCount + filterUnits.length + filterCharacters.length + (activeTab === 'inventory' ? (filterStatuses.length + filterRates.length) : filterPriorities.length);
 
-      // モーダル内で選択中ユニットに連動したキャラクター候補
       const availableCharactersFilter = useMemo(() => {
         if (filterUnits.length === 0) return CHARACTERS;
         return CHARACTERS.filter(c => filterUnits.includes(c.unit));
@@ -561,14 +655,389 @@
         return CHARACTERS.filter(c => wantedForm.units.includes(c.unit));
       }, [wantedForm.units]);
 
+      // --- 📷 一覧を画像として生成する処理 ---
+      const handleExportListImage = async () => {
+        if (sortedAndFilteredList.length === 0) {
+          alert('現在表示されているアイテムがありません');
+          return;
+        }
+        setIsGeneratingImage(true);
+        try {
+          const list = sortedAndFilteredList;
+          const isInventory = activeTab === 'inventory';
+          const titleText = isInventory ? 'プロセカ 所持グッズ一覧' : 'プロセカ 求め一覧';
+
+          // 1. 全画像を並列読み込み
+          const loadedImages = await Promise.all(list.map(item => loadHtmlImage(item.image)));
+
+          // 2. レイアウト寸法計算（横幅1200px固定・4列グリッド・横一列の高さ揃え）
+          const CANVAS_W = 1200;
+          const PADDING_X = 36;
+          const PADDING_TOP = 32;
+          const PADDING_BOTTOM = 40;
+          const HEADER_H = 88;
+          const COLS = 4;
+          const GAP_X = 18;
+          const GAP_Y = 20;
+          const cardW = Math.floor((CANVAS_W - PADDING_X * 2 - GAP_X * (COLS - 1)) / COLS); // 268px
+          const textInnerW = cardW - 24;
+
+          // 計測用仮Canvas
+          const measureCanvas = document.createElement('canvas');
+          const mCtx = measureCanvas.getContext('2d');
+          const fontBase = '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif';
+
+          // 各アイテムの描画情報と高さを事前計算
+          const cardMetas = list.map((item, idx) => {
+            const img = loadedImages[idx];
+            const imgH = img && img.width > 0 ? Math.round(cardW * (img.height / img.width)) : cardW;
+
+            // 種別バッジの行数を計算
+            let typeBadges = [];
+            if (!item.isWanted) {
+              typeBadges = [formatTypeBadge(item.type, item.subTypes)];
+            } else {
+              typeBadges = (item.types && item.types.length > 0)
+                ? item.types.map(t => formatTypeBadge(t, item.typeSubMap?.[t] || []))
+                : ['指定なし'];
+            }
+
+            mCtx.font = `bold 15px ${fontBase}`;
+            let badgeRowCount = 1;
+            let curRowW = 0;
+            typeBadges.forEach(bText => {
+              const bw = Math.min(textInnerW, mCtx.measureText(bText).width + 14);
+              if (curRowW + bw > textInnerW && curRowW > 0) {
+                badgeRowCount++;
+                curRowW = bw + 6;
+              } else {
+                curRowW += bw + 6;
+              }
+            });
+            const badgesBlockH = badgeRowCount * 24 + (badgeRowCount - 1) * 5;
+
+            // タイトルの行数計算（最大2行）
+            mCtx.font = `bold 18px ${fontBase}`;
+            const titleStr = item.name || (item.isWanted ? '絵柄名未設定' : '名称未設定');
+            const titleLines = wrapTextLines(mCtx, titleStr, textInnerW, 2);
+            const titleBlockH = titleLines.length * 24;
+
+            // キャラタグの行数計算
+            const itemChars = (item.characters || []).map(cid => CHARACTERS.find(c => c.id === cid)?.name).filter(Boolean);
+            mCtx.font = `600 14px ${fontBase}`;
+            let charRowCount = itemChars.length > 0 ? 1 : 0;
+            let curCharW = 0;
+            itemChars.forEach(cName => {
+              const cw = mCtx.measureText(cName).width + 12;
+              if (curCharW + cw > textInnerW && curCharW > 0) {
+                charRowCount++;
+                curCharW = cw + 5;
+              } else {
+                curCharW += cw + 5;
+              }
+            });
+            const charsBlockH = charRowCount > 0 ? (charRowCount * 22 + (charRowCount - 1) * 4 + 6) : 0;
+
+            const textAreaH = 12 + badgesBlockH + 8 + titleBlockH + charsBlockH + 12;
+            const totalCardH = imgH + textAreaH;
+
+            return {
+              item,
+              img,
+              imgH,
+              typeBadges,
+              titleLines,
+              itemChars,
+              totalCardH
+            };
+          });
+
+          // 4個ずつの行に分割し、各行の最大高さ（横一列の高さ）を決定
+          const rows = [];
+          for (let i = 0; i < cardMetas.length; i += COLS) {
+            const slice = cardMetas.slice(i, i + COLS);
+            const rowHeight = Math.max(...slice.map(m => m.totalCardH));
+            rows.push({ cards: slice, rowHeight });
+          }
+
+          const totalCardsHeight = rows.reduce((sum, r) => sum + r.rowHeight, 0) + Math.max(0, rows.length - 1) * GAP_Y;
+          const CANVAS_H = PADDING_TOP + HEADER_H + totalCardsHeight + PADDING_BOTTOM;
+
+          // 3. 本番Canvas生成・描画
+          const outCanvas = document.createElement('canvas');
+          outCanvas.width = CANVAS_W;
+          outCanvas.height = CANVAS_H;
+          const ctx = outCanvas.getContext('2d');
+
+          // 全体背景（優しいパステルピンク）
+          const bgGrad = ctx.createLinearGradient(0, 0, CANVAS_W, CANVAS_H);
+          bgGrad.addColorStop(0, '#fff1f2');
+          bgGrad.addColorStop(1, '#fdf2f8');
+          ctx.fillStyle = bgGrad;
+          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+          // 最上段タイトルヘッダー描画（不要なUIは一切なし）
+          const headerY = PADDING_TOP;
+          drawRoundRect(ctx, PADDING_X, headerY, CANVAS_W - PADDING_X * 2, 64, 20);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = isInventory ? '#fecdd3' : '#fbcfe8';
+          ctx.stroke();
+
+          // 左端アクセントバー
+          drawRoundRect(ctx, PADDING_X + 16, headerY + 16, 8, 32, 4);
+          ctx.fillStyle = isInventory ? '#fb7185' : '#ec4899';
+          ctx.fill();
+
+          // タイトル文字
+          ctx.fillStyle = '#1e293b';
+          ctx.font = `900 28px ${fontBase}`;
+          ctx.textBaseline = 'middle';
+          ctx.fillText(titleText, PADDING_X + 36, headerY + 33);
+
+          // 右端に総数のみ控えめに表示
+          ctx.fillStyle = isInventory ? '#f43f5e' : '#db2777';
+          ctx.font = `bold 18px ${fontBase}`;
+          const countLabel = `全 ${list.length} 点`;
+          const countW = ctx.measureText(countLabel).width;
+          ctx.fillText(countLabel, CANVAS_W - PADDING_X - 24 - countW, headerY + 33);
+
+          // 各行の描画（横一列の上端が完全に揃う）
+          let currentY = PADDING_TOP + HEADER_H;
+
+          rows.forEach((row) => {
+            row.cards.forEach((meta, colIdx) => {
+              const cardX = PADDING_X + colIdx * (cardW + GAP_X);
+              const cardY = currentY;
+              const cardH = row.rowHeight; // 横一列のカード高さを揃える
+              const { item, img, imgH, typeBadges, titleLines, itemChars } = meta;
+
+              // カード影・白枠
+              ctx.save();
+              ctx.shadowColor = 'rgba(244, 114, 182, 0.14)';
+              ctx.shadowBlur = 12;
+              ctx.shadowOffsetY = 4;
+              drawRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+              ctx.restore();
+
+              drawRoundRect(ctx, cardX, cardY, cardW, cardH, 16);
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = item.isWanted ? '#fbcfe8' : '#ffe4e6';
+              ctx.stroke();
+
+              // 画像エリア（クリッピングして角丸に合わせる）
+              ctx.save();
+              drawTopRoundRect(ctx, cardX, cardY, cardW, imgH, 16);
+              ctx.clip();
+
+              if (img) {
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillRect(cardX, cardY, cardW, imgH);
+                ctx.drawImage(img, cardX, cardY, cardW, imgH);
+              } else {
+                ctx.fillStyle = item.isWanted ? '#fdf2f8' : '#fff1f2';
+                ctx.fillRect(cardX, cardY, cardW, imgH);
+                ctx.fillStyle = '#f9a8d4';
+                ctx.font = `bold 32px ${fontBase}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(item.isWanted ? '🖼️' : '✨', cardX + cardW / 2, cardY + imgH / 2);
+                ctx.textAlign = 'left';
+              }
+              ctx.restore();
+
+              // 画像上のバッジ描画（レートバッジは強制オフで絶対に描かない！）
+              if (!item.isWanted) {
+                // 在庫：ステータスバッジ（左上）
+                let stY = cardY + 8;
+                (item.statuses || []).slice(0, 2).forEach(rawSt => {
+                  const st = normalizeStatus(rawSt);
+                  const conf = STATUS_OPTIONS.find(s => s.label === st) || { hexBg: '#f1f5f9', hexText: '#475569', hexBorder: '#cbd5e1' };
+                  ctx.font = `bold 14px ${fontBase}`;
+                  const sw = ctx.measureText(st).width + 14;
+                  drawRoundRect(ctx, cardX + 8, stY, sw, 22, 6);
+                  ctx.fillStyle = conf.hexBg;
+                  ctx.fill();
+                  ctx.lineWidth = 1;
+                  ctx.strokeStyle = conf.hexBorder;
+                  ctx.stroke();
+
+                  ctx.fillStyle = conf.hexText;
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(st, cardX + 15, stY + 11);
+                  stY += 26;
+                });
+
+                // 在庫：個数（右上・2個以上）
+                if ((item.count || 1) > 1) {
+                  const cntStr = `×${item.count}`;
+                  ctx.font = `900 15px ${fontBase}`;
+                  const cw = ctx.measureText(cntStr).width + 14;
+                  drawRoundRect(ctx, cardX + cardW - cw - 8, cardY + 8, cw, 24, 7);
+                  ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+                  ctx.fill();
+                  ctx.fillStyle = '#ffffff';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(cntStr, cardX + cardW - cw - 1, cardY + 20);
+                }
+              } else {
+                // 求め絵柄：優先度バッジ（左上・大きく見やすいサイズ）
+                const prioConf = getPriorityConf(item.priority);
+                ctx.font = `900 19px ${fontBase}`;
+                const pw = ctx.measureText(prioConf.label).width + 20;
+                drawRoundRect(ctx, cardX + 8, cardY + 8, pw, 32, 9);
+                ctx.fillStyle = prioConf.hexBg;
+                ctx.fill();
+                ctx.fillStyle = prioConf.hexText;
+                ctx.textBaseline = 'middle';
+                ctx.fillText(prioConf.label, cardX + 18, cardY + 24);
+
+                // 求め絵柄：希望個数（右上）
+                if (item.count) {
+                  const cntStr = `×${item.count}`;
+                  ctx.font = `900 15px ${fontBase}`;
+                  const cw = ctx.measureText(cntStr).width + 14;
+                  drawRoundRect(ctx, cardX + cardW - cw - 8, cardY + 8, cw, 24, 7);
+                  ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+                  ctx.fill();
+                  ctx.fillStyle = '#ffffff';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(cntStr, cardX + cardW - cw - 1, cardY + 20);
+                }
+              }
+
+              // テキスト情報エリア描画
+              let ty = cardY + imgH + 12;
+              const txStart = cardX + 12;
+
+              // グッズ種別・仕様バッジ
+              ctx.font = `bold 15px ${fontBase}`;
+              let bx = txStart;
+              typeBadges.forEach(bText => {
+                let drawText = bText;
+                while (drawText.length > 1 && ctx.measureText(drawText).width + 14 > textInnerW) {
+                  drawText = drawText.slice(0, -1);
+                }
+                const bw = ctx.measureText(drawText).width + 14;
+                if (bx + bw > txStart + textInnerW && bx > txStart) {
+                  bx = txStart;
+                  ty += 29;
+                }
+                drawRoundRect(ctx, bx, ty, bw, 24, 6);
+                ctx.fillStyle = '#fff1f2';
+                ctx.fill();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#fecdd3';
+                ctx.stroke();
+
+                ctx.fillStyle = '#e11d48';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(drawText, bx + 7, ty + 12);
+                bx += bw + 6;
+              });
+              ty += 32;
+
+              // タイトル（グッズ名・絵柄名）
+              ctx.fillStyle = '#1e293b';
+              ctx.font = `bold 18px ${fontBase}`;
+              ctx.textBaseline = 'top';
+              titleLines.forEach(line => {
+                ctx.fillText(line, txStart, ty);
+                ty += 24;
+              });
+
+              // キャラクタータグ
+              if (itemChars.length > 0) {
+                ty += 4;
+                ctx.font = `600 14px ${fontBase}`;
+                let cx = txStart;
+                itemChars.forEach(cName => {
+                  const cw = ctx.measureText(cName).width + 12;
+                  if (cx + cw > txStart + textInnerW && cx > txStart) {
+                    cx = txStart;
+                    ty += 26;
+                  }
+                  drawRoundRect(ctx, cx, ty, cw, 22, 5);
+                  ctx.fillStyle = '#f8fafc';
+                  ctx.fill();
+                  ctx.lineWidth = 1;
+                  ctx.strokeStyle = '#e2e8f0';
+                  ctx.stroke();
+
+                  ctx.fillStyle = '#475569';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(cName, cx + 6, ty + 11);
+                  cx += cw + 5;
+                });
+              }
+            });
+
+            currentY += row.rowHeight + GAP_Y;
+          });
+
+          const dataUrl = outCanvas.toDataURL('image/png');
+          setExportedImageUrl(dataUrl);
+        } catch (err) {
+          console.error(err);
+          alert('画像の生成に失敗しました');
+        } finally {
+          setIsGeneratingImage(false);
+        }
+      };
+
+      const handleDownloadExportedImage = () => {
+        if (!exportedImageUrl) return;
+        const fileName = activeTab === 'inventory' ? 'sekai_goods_list.png' : 'sekai_wanted_list.png';
+        const link = document.createElement('a');
+        link.href = exportedImageUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      const handleShareExportedImage = async () => {
+        if (!exportedImageUrl) return;
+        try {
+          const res = await fetch(exportedImageUrl);
+          const blob = await res.blob();
+          const fileName = activeTab === 'inventory' ? 'sekai_goods_list.png' : 'sekai_wanted_list.png';
+          const file = new File([blob], fileName, { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: activeTab === 'inventory' ? 'プロセカ 所持グッズ一覧' : 'プロセカ 求め一覧'
+            });
+          } else {
+            handleDownloadExportedImage();
+          }
+        } catch (e) {
+          // キャンセル時などは無視
+        }
+      };
+
       return (
         <div className="max-w-4xl mx-auto px-2.5 sm:px-4 py-4">
           {/* ヘッダー */}
-          <header className="mb-3 pb-2 border-b border-rose-200">
-            <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent">
-              プロセカ グッズ管理
-            </h1>
-            <p className="text-[11px] text-rose-400">グッズ在庫 & 求め絵柄コレクション</p>
+          <header className="mb-3 pb-2 border-b border-rose-200 flex items-center justify-between gap-2">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-pink-500 to-rose-400 bg-clip-text text-transparent">
+                プロセカ グッズ管理
+              </h1>
+              <p className="text-[11px] text-rose-400">グッズ在庫 & 求め絵柄コレクション</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportListImage}
+              disabled={isGeneratingImage}
+              className="px-3 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 active:scale-95 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+            >
+              <span>📷</span>
+              <span>{isGeneratingImage ? '作成中...' : '画像で保存'}</span>
+            </button>
           </header>
 
           {/* メインタブ切り替え */}
@@ -615,27 +1084,49 @@
             </button>
           </section>
 
-          {/* コントロール行 */}
+          {/* コントロール行（並び順 & レート比較ボタン） */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
             <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold">
               <span>⇅ 並び順:</span>
-              <div className="flex bg-white/90 p-0.5 rounded-xl border border-rose-100 shadow-sm">
-                {[
-                  { id: 'registered', label: '登録順' },
-                  { id: 'character', label: 'キャラ順' },
-                  { id: 'type', label: 'グッズ順' },
-                ].map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setSortBy(s.id)}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                      sortBy === s.id ? 'bg-rose-400 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+              {activeTab === 'inventory' ? (
+                <div className="flex bg-white/90 p-0.5 rounded-xl border border-rose-100 shadow-sm">
+                  {[
+                    { id: 'registered', label: '登録順' },
+                    { id: 'character', label: 'キャラ順' },
+                    { id: 'type', label: 'グッズ順' },
+                    { id: 'rate', label: 'レート順' },
+                  ].map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setInventorySortBy(s.id)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        inventorySortBy === s.id ? 'bg-rose-400 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex bg-white/90 p-0.5 rounded-xl border border-rose-100 shadow-sm">
+                  {[
+                    { id: 'registered', label: '登録順' },
+                    { id: 'character', label: 'キャラ順' },
+                    { id: 'type', label: 'グッズ順' },
+                    { id: 'priority', label: '優先度順' },
+                  ].map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setWantedSortBy(s.id)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        wantedSortBy === s.id ? 'bg-pink-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -773,7 +1264,7 @@
                     </div>
                   );
                 } else {
-                  /* ================= 💖 求め絵柄 ミニカード ================= */
+                  /* ================= 💖 求め絵柄 ミニカード（優先度表示を約2倍サイズに拡大） ================= */
                   const prioConf = getPriorityConf(item.priority);
                   return (
                     <div
@@ -789,14 +1280,14 @@
                         ) : (
                           <div className="w-full aspect-square bg-pink-50/50 flex items-center justify-center text-pink-300 text-lg">🖼️</div>
                         )}
-                        <div className="absolute top-1 left-1">
-                          <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-md shadow-xs ${prioConf.color}`}>
+                        {/* 優先度バッジ（約2倍のサイズ・視認性強化） */}
+                        <div className="absolute top-1.5 left-1.5">
+                          <span className={`text-xs sm:text-sm font-black px-2.5 py-1 rounded-lg shadow-md tracking-wide inline-block ${prioConf.color}`}>
                             {prioConf.label}
                           </span>
                         </div>
-                        {/* 求め希望数（少数・∞など）の表示 */}
                         {item.count && (
-                          <span className="absolute top-1 right-1 text-[9px] font-black px-1.5 py-0.2 rounded-md bg-black/60 text-white">
+                          <span className="absolute top-1.5 right-1.5 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-black/65 text-white shadow-xs">
                             ×{item.count}
                           </span>
                         )}
@@ -804,7 +1295,6 @@
 
                       <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
                         <div>
-                          {/* 求めているグッズ種別（仕様付きで表示） */}
                           <div className="flex flex-wrap gap-0.5 mb-1">
                             {(item.types && item.types.length > 0) ? (
                               item.types.map(t => {
@@ -883,7 +1373,6 @@
                     )}
                   </div>
 
-                  {/* グッズの種類 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">種類</label>
                     <select
@@ -899,7 +1388,6 @@
                     </select>
                   </div>
 
-                  {/* サブ属性の選択（該当する場合・複数可・必須） */}
                   {ITEM_SUB_OPTIONS[goodsForm.type] && (
                     <div className="bg-rose-50/50 p-2.5 rounded-xl border border-rose-100">
                       <label className="block text-xs font-bold text-rose-600 mb-1.5">
@@ -942,7 +1430,6 @@
                     </div>
                   </div>
 
-                  {/* レート項目 */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
@@ -978,7 +1465,6 @@
                     </div>
                   </div>
 
-                  {/* ステータス複数選択 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">ステータス（複数可）</label>
                     <div className="flex flex-wrap gap-1.5">
@@ -992,7 +1478,6 @@
                     </div>
                   </div>
 
-                  {/* ユニット選択（キャラを絞る用） */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
                       ユニット <span className="text-[10px] font-normal text-slate-400">（選ぶと下のキャラが絞り込まれます）</span>
@@ -1008,7 +1493,6 @@
                     </div>
                   </div>
 
-                  {/* キャラクター選択（ユニットを自動選択せず、保存時に所属ユニットを自動補完） */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
                       キャラクター（複数可）
@@ -1088,7 +1572,6 @@
                     </div>
                   </div>
 
-                  {/* 求めているグッズの種類 & サブ属性 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">求めているグッズの種類（複数可）</label>
                     <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1101,7 +1584,6 @@
                             onClick={() => {
                               const curr = wantedForm.types || [];
                               const nextTypes = isSel ? curr.filter(x => x !== t) : [...curr, t];
-                              // 新規追加時、サブ属性があればデフォルトで1つ目を選択
                               const nextSubMap = { ...(wantedForm.typeSubMap || {}) };
                               if (!isSel && ITEM_SUB_OPTIONS[t] && (!nextSubMap[t] || nextSubMap[t].length === 0)) {
                                 nextSubMap[t] = [ITEM_SUB_OPTIONS[t][0]];
@@ -1116,7 +1598,6 @@
                       })}
                     </div>
 
-                    {/* 選択されたグッズの仕様設定（サブ属性があるもののみ展開） */}
                     {(wantedForm.types || []).filter(t => ITEM_SUB_OPTIONS[t]).map(t => (
                       <div key={t} className="bg-pink-50/50 p-2 rounded-xl border border-pink-100 mb-1.5">
                         <span className="text-[11px] font-bold text-pink-600 block mb-1">
@@ -1150,7 +1631,6 @@
                     ))}
                   </div>
 
-                  {/* 絵柄名 & 希望数（少数、∞対応） */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-2">
                       <label className="block text-xs font-bold text-slate-600 mb-1">絵柄名・カード名</label>
@@ -1168,7 +1648,6 @@
                     </div>
                   </div>
 
-                  {/* 希望数のクイック入力ボタン */}
                   <div className="flex items-center gap-1.5 justify-end">
                     <span className="text-[10px] text-slate-400">クイック入力:</span>
                     {['1', '2', '少数', '∞'].map(val => (
@@ -1183,7 +1662,6 @@
                     ))}
                   </div>
 
-                  {/* ユニット選択 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
                       ユニット <span className="text-[10px] font-normal text-slate-400">（選ぶと下のキャラが絞り込まれます）</span>
@@ -1199,7 +1677,6 @@
                     </div>
                   </div>
 
-                  {/* キャラクター選択 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
                       キャラクター（複数可）
@@ -1305,7 +1782,6 @@
                   <button onClick={() => setIsFilterOpen(false)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500">✕</button>
                 </div>
                 <div className="p-4 overflow-y-auto space-y-4 text-xs hide-scrollbar">
-                  {/* 求めタブ限定：優先度 */}
                   {activeTab === 'wanted' && (
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">優先度</label>
@@ -1326,7 +1802,6 @@
                     </div>
                   )}
 
-                  {/* 在庫タブ限定：レート */}
                   {activeTab === 'inventory' && (
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">レート（未設定も指定可能）</label>
@@ -1349,7 +1824,6 @@
                     </div>
                   )}
 
-                  {/* 在庫タブ限定：ステータス */}
                   {activeTab === 'inventory' && (
                     <div>
                       <label className="block text-xs font-bold text-slate-600 mb-1.5">ステータス</label>
@@ -1362,7 +1836,6 @@
                     </div>
                   )}
 
-                  {/* グッズの種類 & サブ属性絞り込み */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">グッズの種類</label>
                     <div className="flex flex-wrap gap-1 mb-2">
@@ -1372,7 +1845,6 @@
                       })}
                     </div>
 
-                    {/* 選択されたグッズの仕様絞り込み（未選択なら全表示） */}
                     {filterTypes.filter(t => ITEM_SUB_OPTIONS[t]).map(t => (
                       <div key={t} className="bg-rose-50/50 p-2 rounded-xl border border-rose-100 mb-1.5">
                         <span className="text-[11px] font-bold text-rose-600 block mb-1">
@@ -1398,7 +1870,6 @@
                     ))}
                   </div>
 
-                  {/* ユニット選択 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">ユニット（タップで下のキャラ候補が連動）</label>
                     <div className="flex flex-wrap gap-1.5">
@@ -1409,7 +1880,6 @@
                     </div>
                   </div>
 
-                  {/* キャラクター選択 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1.5">
                       キャラクター {filterUnits.length > 0 && <span className="text-[10px] text-pink-500">（選択中ユニットのキャラのみ表示中）</span>}
@@ -1424,6 +1894,48 @@
                 </div>
                 <div className="p-3.5 border-t border-rose-100 bg-slate-50/50 rounded-b-3xl">
                   <button onClick={() => setIsFilterOpen(false)} className="w-full py-2.5 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-xl font-bold text-xs">結果を表示する</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= 📷 一覧画像保存プレビューモーダル ================= */}
+          {exportedImageUrl && (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-50 p-3 sm:p-5">
+              <div className="bg-white w-full max-w-lg rounded-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-rose-100 flex items-center justify-between">
+                  <h3 className="font-bold text-slate-800 text-sm">📷 一覧画像の保存</h3>
+                  <button onClick={() => setExportedImageUrl(null)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500">✕</button>
+                </div>
+
+                <div className="p-3 overflow-y-auto flex-1 bg-slate-100 flex flex-col items-center">
+                  <p className="text-[11px] text-slate-500 mb-2 text-center">
+                    画像を長押しして「写真に保存」するか、下のボタンから保存できます
+                  </p>
+                  <img
+                    src={exportedImageUrl}
+                    alt="生成された一覧画像"
+                    className="w-full h-auto rounded-xl shadow-md border border-slate-200"
+                  />
+                </div>
+
+                <div className="p-3.5 border-t border-rose-100 bg-white flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadExportedImage}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-pink-400 to-rose-400 text-white rounded-xl font-bold text-xs shadow-sm"
+                  >
+                    ⬇️ 画像をダウンロード
+                  </button>
+                  {navigator.share && (
+                    <button
+                      type="button"
+                      onClick={handleShareExportedImage}
+                      className="px-4 py-2.5 bg-rose-50 border border-rose-200 text-rose-600 rounded-xl font-bold text-xs"
+                    >
+                      共有 / 保存
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

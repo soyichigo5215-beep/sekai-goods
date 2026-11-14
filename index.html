@@ -112,6 +112,12 @@
       return `${type}:${subTypes.join(' ')}`;
     };
 
+    const formatWantedTypeBadge = (type, subTypes, count) => {
+      const base = formatTypeBadge(type, subTypes);
+      const trimmed = count !== undefined && count !== null ? String(count).trim() : '';
+      return trimmed ? `${base} ×${trimmed}` : base;
+    };
+
     const normalizeItemData = (item) => {
       let type = item.type;
       let subTypes = Array.isArray(item.subTypes) ? [...item.subTypes] : [];
@@ -130,15 +136,23 @@
 
       let types = Array.isArray(item.types) ? [...item.types] : [];
       let typeSubMap = item.typeSubMap ? { ...item.typeSubMap } : {};
+      let typeCountMap = item.typeCountMap ? { ...item.typeCountMap } : {};
+
       types = types.map(t => {
         if (t === 'エピカ(箔押し)') {
           if (!typeSubMap['エピカ']) typeSubMap['エピカ'] = [];
           if (!typeSubMap['エピカ'].includes('箔押し')) typeSubMap['エピカ'].push('箔押し');
+          if (typeCountMap[t] !== undefined && typeCountMap['エピカ'] === undefined) {
+            typeCountMap['エピカ'] = typeCountMap[t];
+          }
           return 'エピカ';
         }
         if (t === 'メモステ(箔押し)') {
           if (!typeSubMap['メモステ']) typeSubMap['メモステ'] = [];
           if (!typeSubMap['メモステ'].includes('箔押し')) typeSubMap['メモステ'].push('箔押し');
+          if (typeCountMap[t] !== undefined && typeCountMap['メモステ'] === undefined) {
+            typeCountMap['メモステ'] = typeCountMap[t];
+          }
           return 'メモステ';
         }
         return t;
@@ -151,12 +165,22 @@
         );
       }
 
+      // 旧データ（全体countのみ指定されていた場合）を種類別個数へ引き継ぎ
+      if (item.isWanted) {
+        types.forEach(t => {
+          if (typeCountMap[t] === undefined && item.count !== undefined && String(item.count).trim() !== '') {
+            typeCountMap[t] = String(item.count);
+          }
+        });
+      }
+
       return {
         ...item,
         type,
         subTypes,
         types,
         typeSubMap,
+        typeCountMap,
         statuses: (item.statuses || []).map(normalizeStatus)
       };
     };
@@ -200,8 +224,8 @@
       units: [], characters: [], statuses: ['譲'], count: 1, rate: '', memo: '', image: '', createdAt: 0
     };
     const initialWantedForm = {
-      id: '', isWanted: true, types: ['エピカ'], typeSubMap: { 'エピカ': ['N'] },
-      units: [], characters: [], priority: '最優先', count: '1', memo: '', image: '', createdAt: 0
+      id: '', isWanted: true, types: ['エピカ'], typeSubMap: { 'エピカ': ['N'] }, typeCountMap: { 'エピカ': '1' },
+      units: [], characters: [], priority: '最優先', memo: '', image: '', createdAt: 0
     };
 
     // --- Canvas 描画ヘルパー ---
@@ -227,7 +251,6 @@
       ctx.closePath();
     }
 
-    // 改行と最大幅を考慮した複数行折り返し計算
     function wrapMultilineText(ctx, text, maxWidth, maxLines) {
       if (!text || !text.trim()) return [];
       const paragraphs = text.split(/\r?\n/);
@@ -369,9 +392,9 @@
         setWantedForm({
           id: normalized.id, isWanted: true, types: normalized.types || ['エピカ'],
           typeSubMap: normalized.typeSubMap || {},
+          typeCountMap: normalized.typeCountMap || {},
           units: normalized.units || [], characters: normalized.characters || [],
           priority: getPriorityConf(normalized.priority).id,
-          count: normalized.count !== undefined ? String(normalized.count) : '1',
           memo: normalized.memo || '', image: normalized.image || '',
           createdAt: normalized.createdAt || 0
         });
@@ -682,7 +705,7 @@
         return CHARACTERS.filter(c => wantedForm.units.includes(c.unit));
       }, [wantedForm.units]);
 
-      // --- 📷 一覧を画像として生成する処理（名称なし・メモあり） ---
+      // --- 📷 一覧を画像として生成する処理 ---
       const handleExportListImage = async () => {
         if (sortedAndFilteredList.length === 0) {
           alert('現在表示されているアイテムがありません');
@@ -711,18 +734,17 @@
           const mCtx = measureCanvas.getContext('2d');
           const fontBase = '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif';
 
-          // 各アイテムの描画情報と高さを事前計算
           const cardMetas = list.map((item, idx) => {
             const img = loadedImages[idx];
             const imgH = img && img.width > 0 ? Math.round(cardW * (img.height / img.width)) : cardW;
 
-            // 種別バッジの行数を計算
+            // 種別・仕様・希望個数バッジの行数を計算
             let typeBadges = [];
             if (!item.isWanted) {
               typeBadges = [formatTypeBadge(item.type, item.subTypes)];
             } else {
               typeBadges = (item.types && item.types.length > 0)
-                ? item.types.map(t => formatTypeBadge(t, item.typeSubMap?.[t] || []))
+                ? item.types.map(t => formatWantedTypeBadge(t, item.typeSubMap?.[t] || [], item.typeCountMap?.[t]))
                 : ['指定なし'];
             }
 
@@ -756,7 +778,7 @@
             });
             const charsBlockH = charRowCount > 0 ? (charRowCount * 22 + (charRowCount - 1) * 4) : 0;
 
-            // メモの行数計算（ある場合のみ最大3行）
+            // メモの行数計算
             const trimmedMemo = (item.memo || '').trim();
             mCtx.font = `500 14px ${fontBase}`;
             const memoLines = trimmedMemo ? wrapMultilineText(mCtx, trimmedMemo, textInnerW - 14, 3) : [];
@@ -780,7 +802,6 @@
             };
           });
 
-          // 4個ずつの行に分割し、横一列の始まり位置とカード高さを揃える
           const rows = [];
           for (let i = 0; i < cardMetas.length; i += COLS) {
             const slice = cardMetas.slice(i, i + COLS);
@@ -796,7 +817,6 @@
           outCanvas.height = CANVAS_H;
           const ctx = outCanvas.getContext('2d');
 
-          // 全体背景
           const bgGrad = ctx.createLinearGradient(0, 0, CANVAS_W, CANVAS_H);
           bgGrad.addColorStop(0, '#fff1f2');
           bgGrad.addColorStop(1, '#fdf2f8');
@@ -827,7 +847,6 @@
           const countW = ctx.measureText(countLabel).width;
           ctx.fillText(countLabel, CANVAS_W - PADDING_X - 24 - countW, headerY + 33);
 
-          // 各行の描画
           let currentY = PADDING_TOP + HEADER_H;
 
           rows.forEach((row) => {
@@ -914,25 +933,13 @@
                 ctx.fillStyle = prioConf.hexText;
                 ctx.textBaseline = 'middle';
                 ctx.fillText(prioConf.label, cardX + 18, cardY + 24);
-
-                if (item.count) {
-                  const cntStr = `×${item.count}`;
-                  ctx.font = `900 15px ${fontBase}`;
-                  const cw = ctx.measureText(cntStr).width + 14;
-                  drawRoundRect(ctx, cardX + cardW - cw - 8, cardY + 8, cw, 24, 7);
-                  ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
-                  ctx.fill();
-                  ctx.fillStyle = '#ffffff';
-                  ctx.textBaseline = 'middle';
-                  ctx.fillText(cntStr, cardX + cardW - cw - 1, cardY + 20);
-                }
               }
 
               // テキスト情報エリア描画
               let ty = cardY + imgH + 12;
               const txStart = cardX + 12;
 
-              // グッズ種別・仕様バッジ
+              // グッズ種別・仕様・希望個数バッジ
               ctx.font = `bold 15px ${fontBase}`;
               let bx = txStart;
               typeBadges.forEach(bText => {
@@ -1115,7 +1122,7 @@
             </button>
           </section>
 
-          {/* コントロール行（並び順 & レート比較ボタン） */}
+          {/* コントロール行 */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
             <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold">
               <span>⇅ 並び順:</span>
@@ -1284,7 +1291,6 @@
                             </div>
                           )}
 
-                          {/* メモ（入力がある場合のみ表示） */}
                           {item.memo && item.memo.trim() && (
                             <p className="text-[9px] text-slate-600 bg-rose-50/70 border border-rose-100/80 px-1.5 py-1 rounded-md mb-1 whitespace-pre-wrap break-words leading-snug">
                               {item.memo}
@@ -1300,7 +1306,7 @@
                     </div>
                   );
                 } else {
-                  /* ================= 💖 求め絵柄 ミニカード ================= */
+                  /* ================= 💖 求め絵柄 ミニカード（種類ごとの希望個数をバッジ内に表示） ================= */
                   const prioConf = getPriorityConf(item.priority);
                   return (
                     <div
@@ -1321,11 +1327,6 @@
                             {prioConf.label}
                           </span>
                         </div>
-                        {item.count && (
-                          <span className="absolute top-1.5 right-1.5 text-[10px] font-black px-1.5 py-0.5 rounded-md bg-black/65 text-white shadow-xs">
-                            ×{item.count}
-                          </span>
-                        )}
                       </div>
 
                       <div className="p-1.5 flex flex-col justify-between flex-1 bg-white">
@@ -1334,7 +1335,8 @@
                             {(item.types && item.types.length > 0) ? (
                               item.types.map(t => {
                                 const subs = item.typeSubMap?.[t] || [];
-                                const badge = formatTypeBadge(t, subs);
+                                const cnt = item.typeCountMap?.[t];
+                                const badge = formatWantedTypeBadge(t, subs, cnt);
                                 return (
                                   <span key={t} className="text-[8px] font-bold px-1 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-100 max-w-full truncate" title={badge}>
                                     {badge}
@@ -1356,7 +1358,6 @@
                             </div>
                           )}
 
-                          {/* メモ（入力がある場合のみ表示） */}
                           {item.memo && item.memo.trim() && (
                             <p className="text-[9px] text-slate-600 bg-pink-50/70 border border-pink-100/80 px-1.5 py-1 rounded-md mb-1 whitespace-pre-wrap break-words leading-snug">
                               {item.memo}
@@ -1606,9 +1607,10 @@
                     </div>
                   </div>
 
+                  {/* 求めているグッズの種類 & 種類ごとの仕様・希望個数 */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">求めているグッズの種類（複数可）</label>
-                    <div className="flex flex-wrap gap-1.5 mb-2">
+                    <div className="flex flex-wrap gap-1.5 mb-2.5">
                       {ITEM_TYPES.map(t => {
                         const isSel = (wantedForm.types || []).includes(t);
                         return (
@@ -1619,10 +1621,21 @@
                               const curr = wantedForm.types || [];
                               const nextTypes = isSel ? curr.filter(x => x !== t) : [...curr, t];
                               const nextSubMap = { ...(wantedForm.typeSubMap || {}) };
-                              if (!isSel && ITEM_SUB_OPTIONS[t] && (!nextSubMap[t] || nextSubMap[t].length === 0)) {
-                                nextSubMap[t] = [ITEM_SUB_OPTIONS[t][0]];
+                              const nextCountMap = { ...(wantedForm.typeCountMap || {}) };
+                              if (!isSel) {
+                                if (ITEM_SUB_OPTIONS[t] && (!nextSubMap[t] || nextSubMap[t].length === 0)) {
+                                  nextSubMap[t] = [ITEM_SUB_OPTIONS[t][0]];
+                                }
+                                if (nextCountMap[t] === undefined) {
+                                  nextCountMap[t] = '1';
+                                }
                               }
-                              setWantedForm(p => ({ ...p, types: nextTypes, typeSubMap: nextSubMap }));
+                              setWantedForm(p => ({
+                                ...p,
+                                types: nextTypes,
+                                typeSubMap: nextSubMap,
+                                typeCountMap: nextCountMap
+                              }));
                             }}
                             className={`px-2.5 py-1 rounded-xl text-xs font-semibold border ${isSel ? 'bg-rose-500 text-white border-rose-500 shadow-xs' : 'bg-slate-50 text-slate-600'}`}
                           >
@@ -1632,67 +1645,96 @@
                       })}
                     </div>
 
-                    {(wantedForm.types || []).filter(t => ITEM_SUB_OPTIONS[t]).map(t => (
-                      <div key={t} className="bg-pink-50/50 p-2 rounded-xl border border-pink-100 mb-1.5">
-                        <span className="text-[11px] font-bold text-pink-600 block mb-1">
-                          {t}の仕様 <span className="text-[9px] font-normal text-pink-400">（1つ以上選択必須）</span>
-                        </span>
-                        <div className="flex flex-wrap gap-1">
-                          {ITEM_SUB_OPTIONS[t].map(sub => {
-                            const subs = wantedForm.typeSubMap?.[t] || [];
-                            const isSubSel = subs.includes(sub);
-                            return (
-                              <button
-                                type="button"
-                                key={sub}
-                                onClick={() => {
-                                  const nextSubs = isSubSel ? subs.filter(x => x !== sub) : [...subs, sub];
-                                  setWantedForm(p => ({
-                                    ...p,
-                                    typeSubMap: { ...(p.typeSubMap || {}), [t]: nextSubs }
-                                  }));
-                                }}
-                                className={`px-2 py-0.5 rounded-lg text-xs font-bold border transition-all ${
-                                  isSubSel ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-slate-600 border-slate-200'
-                                }`}
-                              >
-                                {isSubSel ? '✓ ' : ''}{sub}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                    {/* 選択されたグッズごとの詳細設定（仕様＋希望個数） */}
+                    {(wantedForm.types || []).map(t => {
+                      const currentCount = wantedForm.typeCountMap?.[t] ?? '';
+                      return (
+                        <div key={t} className="bg-pink-50/50 p-2.5 rounded-xl border border-pink-100 mb-2 space-y-2">
+                          <div className="flex items-center justify-between border-b border-pink-100/80 pb-1">
+                            <span className="text-xs font-extrabold text-pink-600">🎀 {t} の設定</span>
+                          </div>
 
-                  {/* 希望個数 & クイック入力 */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">希望個数</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="例: 1, 少数, ∞"
-                        value={wantedForm.count || ''}
-                        onChange={e => setWantedForm(p => ({ ...p, count: e.target.value }))}
-                        className="w-28 px-3 py-2 rounded-xl border border-pink-200 bg-white text-center text-xs font-bold"
-                      />
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {['1', '2', '少数', '∞'].map(val => (
-                          <button
-                            type="button"
-                            key={val}
-                            onClick={() => setWantedForm(p => ({ ...p, count: val }))}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                              wantedForm.count === val
-                                ? 'bg-pink-400 text-white border-pink-400 shadow-xs'
-                                : 'bg-pink-50 border-pink-200 text-pink-600 hover:bg-pink-100'
-                            }`}
-                          >
-                            {val}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                          {/* サブ仕様がある場合 */}
+                          {ITEM_SUB_OPTIONS[t] && (
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                                仕様 <span className="text-[9px] font-normal text-pink-400">（1つ以上選択必須）</span>
+                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                {ITEM_SUB_OPTIONS[t].map(sub => {
+                                  const subs = wantedForm.typeSubMap?.[t] || [];
+                                  const isSubSel = subs.includes(sub);
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={sub}
+                                      onClick={() => {
+                                        const nextSubs = isSubSel ? subs.filter(x => x !== sub) : [...subs, sub];
+                                        setWantedForm(p => ({
+                                          ...p,
+                                          typeSubMap: { ...(p.typeSubMap || {}), [t]: nextSubs }
+                                        }));
+                                      }}
+                                      className={`px-2 py-0.5 rounded-lg text-xs font-bold border transition-all ${
+                                        isSubSel ? 'bg-rose-500 text-white border-rose-500' : 'bg-white text-slate-600 border-slate-200'
+                                      }`}
+                                    >
+                                      {isSubSel ? '✓ ' : ''}{sub}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 種類ごとの希望個数 */}
+                          <div>
+                            <span className="text-[10px] font-bold text-slate-500 block mb-1">希望個数（数字・少数・∞など）</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <input
+                                type="text"
+                                placeholder="例: 1, 少数, ∞"
+                                value={currentCount}
+                                onChange={e => setWantedForm(p => ({
+                                  ...p,
+                                  typeCountMap: { ...(p.typeCountMap || {}), [t]: e.target.value }
+                                }))}
+                                className="w-24 px-2 py-1 rounded-lg border border-pink-200 bg-white text-center text-xs font-bold"
+                              />
+                              {['1', '2', '少数', '∞'].map(val => (
+                                <button
+                                  type="button"
+                                  key={val}
+                                  onClick={() => setWantedForm(p => ({
+                                    ...p,
+                                    typeCountMap: { ...(p.typeCountMap || {}), [t]: val }
+                                  }))}
+                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                                    currentCount === val
+                                      ? 'bg-pink-400 text-white border-pink-400 shadow-xs'
+                                      : 'bg-white border-pink-200 text-pink-600 hover:bg-pink-100'
+                                  }`}
+                                >
+                                  {val}
+                                </button>
+                              ))}
+                              {currentCount !== '' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setWantedForm(p => ({
+                                    ...p,
+                                    typeCountMap: { ...(p.typeCountMap || {}), [t]: '' }
+                                  }))}
+                                  className="px-1.5 py-1 text-[10px] text-slate-400 hover:text-red-500 underline"
+                                >
+                                  なし
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div>

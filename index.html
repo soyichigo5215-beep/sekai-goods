@@ -53,7 +53,8 @@
     ];
 
     const ITEM_TYPES = [
-      'エピカ', 'ぱしゃこれ', 'メモステ', '色紙', '缶バッジ',
+      'エピカ', 'ぱしゃこれ', 'メモステ', 'ウエハース', 'グリカ',
+      '色紙', '缶バッジ', 'ノーブルアート',
       '特典', 'はぴこれ', 'アクリルスタンド', 'キーホルダー', 'クリアファイル', 'その他'
     ];
 
@@ -61,11 +62,12 @@
       'エピカ': ['N', '特訓前', '特訓後', '箔押し', '特典', 'その他'],
       'ぱしゃこれ': ['N', '箔押し'],
       'メモステ': ['N', '小', '大', '箔押し', 'その他'],
+      'ウエハース': ['N', 'レア'],
+      'グリカ': ['N', '箔押し'],
       '色紙': ['特訓前', '特訓後', 'その他'],
       '缶バッジ': ['特訓前', '特訓後', 'その他'],
     };
 
-    // ステータス定義（「譲」「予約済」のみ）
     const STATUS_OPTIONS = [
       { label: '譲', bg: 'bg-pink-100 text-pink-700 border-pink-200', hexBg: '#fce7f3', hexText: '#be185d', hexBorder: '#fbcfe8' },
       { label: '予約済', bg: 'bg-teal-100 text-teal-700 border-teal-200', hexBg: '#ccfbf1', hexText: '#0f766e', hexBorder: '#99f6e4' },
@@ -84,17 +86,18 @@
       { id: '緩求', label: '緩求', color: 'bg-slate-400 text-white', hexBg: '#94a3b8', hexText: '#ffffff' },
     ];
 
+    // レート定義（激高:赤 / 高:オレンジ / 普通:緑 / 低:水色 / 激低:枠なし）
     const RATES = [
-      { id: '激高', label: '激高', color: 'bg-rose-600 text-white', border: 'border-rose-400' },
-      { id: '高', label: '高', color: 'bg-amber-500 text-white', border: 'border-amber-400' },
-      { id: '普通', label: '普通', color: 'bg-emerald-500 text-white', border: 'border-emerald-400' },
-      { id: '低', label: '低', color: 'bg-sky-400 text-white', border: 'border-sky-300' },
-      { id: '激低', label: '激低', color: 'bg-slate-400 text-white', border: 'border-slate-300' },
+      { id: '激高', label: '激高', color: 'bg-red-500 text-white', frameClass: 'border-4 border-red-500', frameHex: '#ef4444' },
+      { id: '高', label: '高', color: 'bg-orange-500 text-white', frameClass: 'border-4 border-orange-500', frameHex: '#f97316' },
+      { id: '普通', label: '普通', color: 'bg-emerald-500 text-white', frameClass: 'border-4 border-emerald-500', frameHex: '#10b981' },
+      { id: '低', label: '低', color: 'bg-sky-400 text-white', frameClass: 'border-4 border-sky-400', frameHex: '#38bdf8' },
+      { id: '激低', label: '激低', color: 'bg-slate-400 text-white', frameClass: '', frameHex: null },
     ];
 
     const FILTER_RATES = [
       ...RATES,
-      { id: '未設定', label: '未設定', color: 'bg-slate-200 text-slate-700', border: 'border-slate-300' },
+      { id: '未設定', label: '未設定', color: 'bg-slate-200 text-slate-700', frameClass: '', frameHex: null },
     ];
 
     const getPriorityConf = (prio) => {
@@ -112,7 +115,6 @@
       return `${type}:${subTypes.join(' ')}`;
     };
 
-    // 求め絵柄の種別・仕様・個数バッジ生成関数
     const getWantedTypeBadges = (item) => {
       if (!item.types || item.types.length === 0) return ['指定なし'];
       let badges = [];
@@ -245,12 +247,10 @@
     };
 
     // --- 初期フォーム状態 ---
-    // 在庫管理：ステータスは初期未選択([])、個数は文字として入力可能に
     const initialGoodsForm = {
       id: '', isWanted: false, type: 'エピカ', subTypes: ['N'],
       units: [], characters: [], statuses: [], count: '1', rate: '', memo: '', image: '', createdAt: 0
     };
-    // 絵柄管理：グッズの種類は初期未選択([])
     const initialWantedForm = {
       id: '', isWanted: true, types: [], typeSubMap: {},
       typeCountMap: {}, typeSubCountMap: {},
@@ -459,7 +459,6 @@
           if (c && c.unit) autoUnits.add(c.unit);
         });
 
-        // 在庫管理の枚数を数値化（未入力・1未満の場合は1に補正）
         const sanitizedCount = !dataToSave.isWanted
           ? Math.max(1, parseInt(dataToSave.count, 10) || 1)
           : dataToSave.count;
@@ -744,7 +743,7 @@
         return CHARACTERS.filter(c => wantedForm.units.includes(c.unit));
       }, [wantedForm.units]);
 
-      // --- 📷 一覧を画像として生成する処理（Z順・横一列の高さ揃え） ---
+      // --- 📷 一覧を画像として生成する処理（レート比較ON時は枠の色もそのまま出力） ---
       const handleExportListImage = async () => {
         if (sortedAndFilteredList.length === 0) {
           alert('現在表示されているアイテムがありません');
@@ -890,6 +889,13 @@
               const cardH = row.rowHeight;
               const { item, img, imgH, typeBadges, itemChars, memoLines, memoBlockH } = meta;
 
+              // レート比較ON時の枠色判定
+              const rateConf = (!item.isWanted && showRateComparison && item.rate)
+                ? RATES.find(r => r.id === item.rate)
+                : null;
+              const rateFrameHex = rateConf ? rateConf.frameHex : null;
+              const frameThickness = rateFrameHex ? 7 : 0;
+
               ctx.save();
               ctx.shadowColor = 'rgba(244, 114, 182, 0.14)';
               ctx.shadowBlur = 12;
@@ -904,18 +910,28 @@
               ctx.strokeStyle = item.isWanted ? '#fbcfe8' : '#ffe4e6';
               ctx.stroke();
 
-              // 画像エリア
+              // 画像エリア描画（レート比較ON時は外周に色の枠を描画し、内側に画像全体を描画）
               ctx.save();
               drawTopRoundRect(ctx, cardX, cardY, cardW, imgH, 16);
               ctx.clip();
 
+              if (rateFrameHex) {
+                ctx.fillStyle = rateFrameHex;
+                ctx.fillRect(cardX, cardY, cardW, imgH);
+              }
+
+              const innerImgX = cardX + frameThickness;
+              const innerImgY = cardY + frameThickness;
+              const innerImgW = cardW - frameThickness * 2;
+              const innerImgH = imgH - frameThickness * 2;
+
               if (img) {
                 ctx.fillStyle = '#f8fafc';
-                ctx.fillRect(cardX, cardY, cardW, imgH);
-                ctx.drawImage(img, cardX, cardY, cardW, imgH);
+                ctx.fillRect(innerImgX, innerImgY, innerImgW, innerImgH);
+                ctx.drawImage(img, innerImgX, innerImgY, innerImgW, innerImgH);
               } else {
                 ctx.fillStyle = item.isWanted ? '#fdf2f8' : '#fff1f2';
-                ctx.fillRect(cardX, cardY, cardW, imgH);
+                ctx.fillRect(innerImgX, innerImgY, innerImgW, innerImgH);
                 ctx.fillStyle = '#f9a8d4';
                 ctx.font = `bold 32px ${fontBase}`;
                 ctx.textAlign = 'center';
@@ -925,13 +941,15 @@
               }
               ctx.restore();
 
+              const badgeInset = rateFrameHex ? 4 : 0;
+
               if (!item.isWanted) {
-                let stY = cardY + 8;
+                let stY = cardY + 8 + badgeInset;
                 normalizeStatuses(item.statuses).slice(0, 2).forEach(st => {
                   const conf = STATUS_OPTIONS.find(s => s.label === st) || { hexBg: '#f1f5f9', hexText: '#475569', hexBorder: '#cbd5e1' };
                   ctx.font = `bold 14px ${fontBase}`;
                   const sw = ctx.measureText(st).width + 14;
-                  drawRoundRect(ctx, cardX + 8, stY, sw, 22, 6);
+                  drawRoundRect(ctx, cardX + 8 + badgeInset, stY, sw, 22, 6);
                   ctx.fillStyle = conf.hexBg;
                   ctx.fill();
                   ctx.lineWidth = 1;
@@ -940,7 +958,7 @@
 
                   ctx.fillStyle = conf.hexText;
                   ctx.textBaseline = 'middle';
-                  ctx.fillText(st, cardX + 15, stY + 11);
+                  ctx.fillText(st, cardX + 15 + badgeInset, stY + 11);
                   stY += 26;
                 });
 
@@ -948,12 +966,12 @@
                   const cntStr = `×${item.count}`;
                   ctx.font = `900 15px ${fontBase}`;
                   const cw = ctx.measureText(cntStr).width + 14;
-                  drawRoundRect(ctx, cardX + cardW - cw - 8, cardY + 8, cw, 24, 7);
+                  drawRoundRect(ctx, cardX + cardW - cw - 8 - badgeInset, cardY + 8 + badgeInset, cw, 24, 7);
                   ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
                   ctx.fill();
                   ctx.fillStyle = '#ffffff';
                   ctx.textBaseline = 'middle';
-                  ctx.fillText(cntStr, cardX + cardW - cw - 1, cardY + 20);
+                  ctx.fillText(cntStr, cardX + cardW - cw - 1 - badgeInset, cardY + 20 + badgeInset);
                 }
               } else {
                 const prioConf = getPriorityConf(item.priority);
@@ -1246,7 +1264,7 @@
             </div>
           )}
 
-          {/* --- 一覧表示エリア（左から右・上から下へZ順に並ぶグリッドレイアウト） --- */}
+          {/* --- 一覧表示エリア（Z順グリッドレイアウト） --- */}
           {sortedAndFilteredList.length === 0 ? (
             <div className="text-center py-16 bg-white/70 border border-dashed border-rose-200 rounded-3xl p-6">
               <div className="text-3xl mb-2">{activeTab === 'inventory' ? '📦' : '💖'}</div>
@@ -1260,6 +1278,7 @@
                 if (!item.isWanted) {
                   /* ================= 📦 在庫グッズ ミニカード ================= */
                   const rateConf = item.rate ? RATES.find(r => r.id === item.rate) : null;
+                  const rateFrameClass = (showRateComparison && rateConf && rateConf.frameClass) ? rateConf.frameClass : '';
                   const typeLabel = formatTypeBadge(item.type, item.subTypes);
                   const validStatuses = normalizeStatuses(item.statuses);
 
@@ -1268,8 +1287,9 @@
                       key={item.id}
                       className="bg-white rounded-xl border border-rose-100 shadow-sm overflow-hidden flex flex-col group relative"
                     >
+                      {/* 画像エリア（レート比較ON時は画像の枠の色でレートを表現） */}
                       <div 
-                        className="w-full bg-slate-50 relative cursor-pointer"
+                        className={`w-full bg-slate-50 relative cursor-pointer rounded-t-xl overflow-hidden transition-all ${rateFrameClass}`}
                         onClick={() => item.image && setPreviewImage(item.image)}
                       >
                         {item.image ? (
@@ -1293,14 +1313,6 @@
                           <span className="absolute top-1 right-1 text-[9px] font-black px-1.5 py-0.2 rounded-md bg-black/60 text-white">
                             ×{item.count}
                           </span>
-                        )}
-
-                        {showRateComparison && rateConf && (
-                          <div className="absolute bottom-1 right-1 animate-in fade-in duration-150">
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-md border ${rateConf.color} ${rateConf.border}`}>
-                              {rateConf.label}
-                            </span>
-                          </div>
                         )}
                       </div>
 
@@ -1438,7 +1450,7 @@
                     )}
                   </div>
 
-                  {/* 種類 & 所持数（バックスペースで1を消して打ち直せる仕様に修正） */}
+                  {/* 種類 & 所持数 */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-2">
                       <label className="block text-xs font-bold text-slate-600 mb-1">種類</label>
@@ -1503,7 +1515,7 @@
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-slate-600 flex items-center gap-1">
                         <span>🔒 レート</span>
-                        <span className="text-[10px] font-normal text-rose-400">（任意・通常は非表示）</span>
+                        <span className="text-[10px] font-normal text-rose-400">（任意・比較ON時は画像枠の色で表示）</span>
                       </label>
                       {goodsForm.rate && (
                         <button
@@ -1534,7 +1546,6 @@
                     </div>
                   </div>
 
-                  {/* ステータス（「譲」「予約済」のみ・初期未選択） */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">ステータス（任意・複数可）</label>
                     <div className="flex flex-wrap gap-1.5">
@@ -1642,7 +1653,6 @@
                     </div>
                   </div>
 
-                  {/* 求めているグッズの種類（初期は未選択） */}
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">求めているグッズの種類（複数可）</label>
                     <div className="flex flex-wrap gap-1.5 mb-2.5">
